@@ -1,0 +1,12 @@
+# Provider identity and component definitions.
+# Edit this file to add or remove components.
+# Run `make generate` after making changes.
+
+components:
+    backupAgent:
+        type: medusa
+    engine:
+        type: cassandra
+    monitoring:
+        type: prometheus
+name: provider-cassandra

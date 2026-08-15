@@ -1,0 +1,24 @@
+apiVersion: v2
+name: provider-cassandra
+description: A Helm chart for deploying the OpenEverest provider-cassandra provider
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - openeverest
+  - provider
+  - database
+home: https://github.com/openeverest/provider-cassandra
+sources:
+  - https://github.com/openeverest/provider-cassandra
+maintainers:
+  - name: OpenEverest Contributors
+# The provider bundles the k8ssandra-operator so installing this chart also
+# installs the operator and its CRDs (cass-operator + medusa). cass-operator
+# requires cert-manager to be present in the cluster.
+dependencies:
+  - name: k8ssandra-operator
+    alias: operator
+    version: "1.32.6"
+    repository: https://helm.k8ssandra.io/stable
+    condition: operator.enabled

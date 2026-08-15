@@ -1,0 +1,28 @@
+# Example Instance CR for the provider-cassandra provider.
+# Apply this to your cluster to create a database instance.
+#
+# Prerequisites:
+#   1. OpenEverest CRDs installed
+#   2. Provider CR applied (provider.yaml)
+#   3. Operator running
+#   4. Provider controller running
+apiVersion: core.openeverest.io/v1alpha1
+kind: Instance
+metadata:
+  name: example-instance
+spec:
+  providerRef:
+    name: provider-cassandra
+  version: "5.0"
+  topology:
+    type: singleDatacenter
+  components:
+    engine:
+      type: cassandra
+      replicas: 3
+      resources:
+        requests:
+          cpu: "1"
+          memory: 4Gi
+      storage:
+        size: 25Gi

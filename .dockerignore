@@ -1,0 +1,8 @@
+# generated binaries
+bin/*
+# keep the built provider binary for the Tilt dev image (dev/provider.Dockerfile)
+!bin/provider
+# Helm chart dependencies
+charts/
+# test artifacts
+/tmp/

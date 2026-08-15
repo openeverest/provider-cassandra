@@ -1,0 +1,41 @@
+# Component type version catalog.
+# Add new versions here when operator releases are available.
+# Mark exactly one version per type as `default: true`.
+#
+# cassandra images are cass-operator management-api images; the k8ssandra
+# operator derives the same image from serverVersion, but the catalog still
+# needs an explicit image per version.
+
+componentTypes:
+    cassandra:
+        versions:
+            - version: "4.1.9"
+              image: k8ssandra/cass-management-api:4.1.9-ubi
+            - version: "5.0.4"
+              image: k8ssandra/cass-management-api:5.0.4-ubi
+              default: true
+    medusa:
+        versions:
+            - version: "0.22.3"
+              image: k8ssandra/medusa:0.22.3
+              default: true
+    prometheus:
+        versions:
+            - version: "2.55.1"
+              image: prom/prometheus:v2.55.1
+              default: true
+
+# Version bundles — curated sets of component versions known to work together.
+# Users set spec.version on an Instance to select a bundle.
+versions:
+    - name: "5.0"
+      default: true
+      components:
+        engine: "5.0.4"
+        backupAgent: "0.22.3"
+        monitoring: "2.55.1"
+    - name: "4.1"
+      components:
+        engine: "4.1.9"
+        backupAgent: "0.22.3"
+        monitoring: "2.55.1"

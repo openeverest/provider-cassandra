@@ -1,0 +1,141 @@
+# SingleDatacenter topology definition.
+# Deploys a single Cassandra datacenter (one K8ssandraCluster with one
+# CassandraDatacenter). backupAgent (Medusa) and monitoring (Prometheus) are
+# optional add-ons.
+#
+# config.components: which components are used and their defaults.
+# ui: rendering hints for the frontend form.
+
+config:
+    components:
+        engine:
+            defaults:
+                replicas: 3
+        backupAgent:
+            optional: true
+        monitoring:
+            optional: true
+ui:
+    sections:
+        databaseVersion:
+            label: Database Version
+            description: Provide the information about the database version you want to use.
+            components:
+                version:
+                    uiType: select
+                    path: spec.version
+                    fieldParams:
+                        label: Database Version
+                        optionsPath: spec.versions
+                        optionsPathConfig:
+                            labelPath: name
+                            valuePath: name
+                        modes:
+                            edit:
+                                disabled: true
+                            restore:
+                                disabled: true
+                    validation:
+                        required: true
+        resources:
+            label: Resources
+            description: Configure the resources your database will have access to.
+            components:
+                nodes:
+                    uiType: group
+                    components:
+                        numberOfNodes:
+                            path: spec.components.engine.replicas
+                            uiType: number
+                            fieldParams:
+                                label: Number of nodes
+                                defaultValue: 3
+                            validation:
+                                required: true
+                                min: 1
+                                int: true
+                                modes:
+                                    edit:
+                                        celExpressions:
+                                            - celExpr: "!(spec.components.engine.replicas == 1 && original.spec.components.engine.replicas > 1)"
+                                              message: Cannot scale down to a single node
+                        resources:
+                            uiType: group
+                            groupType: line
+                            components:
+                                cpu:
+                                    path: spec.components.engine.resources.requests.cpu
+                                    uiType: number
+                                    fieldParams:
+                                        label: CPU
+                                        defaultValue: 1
+                                        step: 1
+                                    validation:
+                                        min: 1
+                                        required: true
+                                memory:
+                                    path: spec.components.engine.resources.requests.memory
+                                    uiType: number
+                                    fieldParams:
+                                        label: Memory
+                                        defaultValue: 4
+                                        step: 0.1
+                                        badge: Gi
+                                        badgeToApi: true
+                                    validation:
+                                        min: 1
+                                        required: true
+                                disk:
+                                    path: spec.components.engine.storage.size
+                                    uiType: number
+                                    fieldParams:
+                                        label: Disk
+                                        defaultValue: 25
+                                        badge: Gi
+                                        badgeToApi: true
+                                    validation:
+                                        min: 1
+                                        int: true
+                                        required: true
+                                        modes:
+                                            edit:
+                                                celExpressions:
+                                                    - celExpr: spec.components.engine.storage.size >= original.spec.components.engine.storage.size
+                                                      message: Disk size cannot be decreased
+                    componentsOrder:
+                        - numberOfNodes
+                        - resources
+        monitoring:
+            label: Monitoring
+            description: Monitor the health of your database to detect issues quickly and improve its performance.
+            components:
+                monitoring:
+                    uiType: select
+                    path: spec.components.monitoring.parameters.monitoringConfigName
+                    fieldParams:
+                        label: Monitoring endpoint
+                    dataSource:
+                        provider: monitoringConfigs
+        advanced:
+            label: Advanced configuration
+            description: Configure advanced settings for your database.
+            components:
+                storageClass:
+                    uiType: select
+                    path: spec.components.engine.storage.storageClass
+                    fieldParams:
+                        label: Storage class
+                        modes:
+                            edit:
+                                disabled: true
+                            restore:
+                                disabled: true
+                    validation:
+                        required: true
+                    dataSource:
+                        provider: storageClasses
+    sectionsOrder:
+        - databaseVersion
+        - resources
+        - monitoring
+        - advanced
