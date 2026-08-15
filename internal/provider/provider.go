@@ -64,7 +64,7 @@ func (p *Provider) Sync(c *controller.Context) error {
 	l := log.FromContext(c.Context())
 	l.Info("Syncing K8ssandraCluster", "name", c.Name())
 
-	dc, err := p.buildDatacenter(c)
+	cassandra, err := p.buildCassandra(c)
 	if err != nil {
 		return err
 	}
@@ -72,10 +72,7 @@ func (p *Provider) Sync(c *controller.Context) error {
 	kc := &k8ssandraapi.K8ssandraCluster{
 		ObjectMeta: c.ObjectMeta(c.Name()),
 	}
-	kc.Spec.Cassandra = &k8ssandraapi.CassandraClusterTemplate{
-		ServerType:  k8ssandraapi.ServerDistributionCassandra,
-		Datacenters: []k8ssandraapi.CassandraDatacenterTemplate{*dc},
-	}
+	kc.Spec.Cassandra = cassandra
 
 	medusa, err := buildMedusa(c)
 	if err != nil {
@@ -86,9 +83,12 @@ func (p *Provider) Sync(c *controller.Context) error {
 	return c.Apply(kc)
 }
 
-// buildDatacenter translates the engine component spec into a single
-// CassandraDatacenter template.
-func (p *Provider) buildDatacenter(c *controller.Context) (*k8ssandraapi.CassandraDatacenterTemplate, error) {
+// buildCassandra translates the engine component spec into a single-datacenter
+// Cassandra cluster template. Shared options (version, image, storage,
+// resources) are set at the cluster level; the datacenter inherits them and
+// only carries its name and size. The k8ssandra-operator parses the
+// cluster-level serverVersion, so it must not be left empty.
+func (p *Provider) buildCassandra(c *controller.Context) (*k8ssandraapi.CassandraClusterTemplate, error) {
 	engine := c.Instance().Spec.Components[common.ComponentEngine]
 
 	version, image, err := resolveEngineImage(c, engine)
@@ -101,16 +101,19 @@ func (p *Provider) buildDatacenter(c *controller.Context) (*k8ssandraapi.Cassand
 		size = *engine.Replicas
 	}
 
-	return &k8ssandraapi.CassandraDatacenterTemplate{
-		Meta: k8ssandraapi.EmbeddedObjectMeta{
-			Name: common.DatacenterName,
-		},
-		Size: size,
+	return &k8ssandraapi.CassandraClusterTemplate{
+		ServerType: k8ssandraapi.ServerDistributionCassandra,
 		DatacenterOptions: k8ssandraapi.DatacenterOptions{
 			ServerVersion: version,
 			ServerImage:   image,
 			StorageConfig: buildStorageConfig(engine.Storage),
 			Resources:     engine.Resources,
+		},
+		Datacenters: []k8ssandraapi.CassandraDatacenterTemplate{
+			{
+				Meta: k8ssandraapi.EmbeddedObjectMeta{Name: common.DatacenterName},
+				Size: size,
+			},
 		},
 	}, nil
 }
