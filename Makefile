@@ -169,18 +169,18 @@ install-crds: ## Install OpenEverest CRDs (and your operator's CRDs) into the cl
 
 .PHONY: deploy-provider-ci
 deploy-provider-ci: helm-deps ## Deploy the provider via Helm for CI (IMG must already be imported into k3d).
-	# TODO: if your chart pulls dependencies from external repos, add them first:
-	# helm repo add <repo-name> <repo-url>
+	# The bundled k8ssandra-operator is disabled in CI: integration tests
+	# simulate the operator by patching CR statuses directly, and disabling the
+	# subchart avoids its cert-manager Certificate/Issuer resources (cert-manager
+	# is not installed in the CI cluster).
 	helm upgrade --install provider-cassandra $(CHART_DIR) \
 		--create-namespace \
 		--namespace provider-system \
+		--set operator.enabled=false \
 		--set image.repository=$(_IMG_REPO) \
 		--set image.tag=$(_IMG_TAG) \
 		--set image.pullPolicy=Never \
 		--wait --timeout 2m
-	# TODO: if your chart bundles the DB operator as a subchart, scale it to 0
-	# (e.g. --set operator.replicaCount=0) — integration tests simulate the
-	# operator by patching CR statuses directly.
 
 ##@ Local Development Cluster
 
