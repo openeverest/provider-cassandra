@@ -139,6 +139,14 @@ presets: []
   #     components:
   #       engine:
 
+# -- Global values shared with the bundled operator subchart.
+global:
+  # -- Make the k8ssandra-operator watch and reconcile K8ssandraClusters in ALL
+  # namespaces. Required because OpenEverest Instances (and the K8ssandraClusters
+  # the provider creates for them) can live in any namespace. Set to false only
+  # when the operator and all Instances share a single namespace.
+  clusterScoped: true
+
 # -- Values for the bundled k8ssandra-operator subchart (deploys the operator
 # and its CRDs: k8ssandra, cass-operator and medusa).
 # See https://github.com/k8ssandra/k8ssandra-operator/tree/main/charts/k8ssandra-operator
