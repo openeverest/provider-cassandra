@@ -40,8 +40,18 @@ func New() *Provider {
 				k8ssandraapi.AddToScheme,
 				medusaapi.AddToScheme,
 			},
+			// GenerationChangedPredicate matters here: k8ssandra-operator writes to
+			// K8ssandraCluster.status very frequently while a cluster is coming up
+			// (per-DC conditions, seeds, telemetry, ...), none of which bump
+			// .metadata.generation. Without this filter, every one of those status
+			// writes re-triggers Sync(), which re-applies the spec and races the
+			// operator's own status update -- the two controllers end up fighting
+			// over resourceVersion (visible as repeated "the object has been
+			// modified" conflicts on the operator side) and the operator can never
+			// win the race to persist CassandraInitialized=true, so the Instance
+			// never leaves Provisioning even once Cassandra is actually healthy.
 			WatchConfigs: []controller.WatchConfig{
-				controller.WatchOwned(&k8ssandraapi.K8ssandraCluster{}),
+				controller.WatchOwned(&k8ssandraapi.K8ssandraCluster{}, controller.GenerationChangedPredicate),
 			},
 		},
 	}
