@@ -26,8 +26,6 @@ import (
 	backupv1alpha1 "github.com/openeverest/openeverest/v2/api/backup/v1alpha1"
 	commonv1alpha1 "github.com/openeverest/openeverest/v2/api/common/v1alpha1"
 	"github.com/openeverest/openeverest/v2/provider-runtime/controller"
-
-	"github.com/openeverest/provider-cassandra/internal/common"
 )
 
 // Compile-time interface checks.
@@ -74,11 +72,16 @@ func buildMedusa(c *controller.Context) (*medusaapi.MedusaClusterTemplate, error
 // SyncBackup creates or updates the MedusaBackupJob for a Backup CR and maps
 // its status to an OpenEverest backup execution status.
 func (p *Provider) SyncBackup(c *controller.Context, backup *backupv1alpha1.Backup) (controller.BackupExecutionStatus, error) {
+	dcName, err := datacenterNameFor(c)
+	if err != nil {
+		return controller.BackupExecutionStatus{}, err
+	}
+
 	job := &medusaapi.MedusaBackupJob{
 		ObjectMeta: metav1.ObjectMeta{Name: backup.Name, Namespace: backup.Namespace},
 	}
 	if _, err := controllerutil.CreateOrUpdate(c.Context(), c.Client(), job, func() error {
-		job.Spec.CassandraDatacenter = common.DatacenterName
+		job.Spec.CassandraDatacenter = dcName
 		return controllerutil.SetControllerReference(backup, job, c.Client().Scheme())
 	}); err != nil {
 		return controller.BackupExecutionStatus{}, err
@@ -127,12 +130,17 @@ func (p *Provider) SyncRestore(c *controller.Context, restore *backupv1alpha1.Re
 		}, nil
 	}
 
+	dcName, err := datacenterNameFor(c)
+	if err != nil {
+		return controller.RestoreExecutionStatus{}, err
+	}
+
 	job := &medusaapi.MedusaRestoreJob{
 		ObjectMeta: metav1.ObjectMeta{Name: restore.Name, Namespace: restore.Namespace},
 	}
 	if _, err := controllerutil.CreateOrUpdate(c.Context(), c.Client(), job, func() error {
 		job.Spec.Backup = backup.Name
-		job.Spec.CassandraDatacenter = common.DatacenterName
+		job.Spec.CassandraDatacenter = dcName
 		return controllerutil.SetControllerReference(restore, job, c.Client().Scheme())
 	}); err != nil {
 		return controller.RestoreExecutionStatus{}, err
