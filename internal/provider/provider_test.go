@@ -24,6 +24,9 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	corev1alpha1 "github.com/openeverest/openeverest/v2/api/core/v1alpha1"
 	"github.com/openeverest/openeverest/v2/provider-runtime/controller"
@@ -48,6 +51,17 @@ func newTestInstance(components map[string]corev1alpha1.ComponentSpec, topology 
 // for functions that don't touch the client (Validate, buildTelemetry).
 func newTestContext(instance *corev1alpha1.Instance) *controller.Context {
 	return controller.NewContext(context.Background(), nil, instance, common.ProviderName)
+}
+
+// fakeClientContext wraps instance in a Context backed by a fake
+// controller-runtime client seeded with objs, for functions that touch the
+// client (buildConnectionDetails, existingCassandra, ...).
+func fakeClientContext(instance *corev1alpha1.Instance, objs ...client.Object) *controller.Context {
+	scheme := runtime.NewScheme()
+	_ = corev1.AddToScheme(scheme)
+	_ = k8ssandraapi.AddToScheme(scheme)
+	fakeClient := fake.NewClientBuilder().WithScheme(scheme).WithObjects(objs...).Build()
+	return controller.NewContext(context.Background(), fakeClient, instance, common.ProviderName)
 }
 
 func TestBuildStorageConfig(t *testing.T) {
@@ -366,4 +380,61 @@ func TestValidate(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestBuildConnectionDetails(t *testing.T) {
+	t.Parallel()
+
+	// Regression test: k8ssandra-operator names the superuser secret from
+	// K8ssandraCluster.SanitizedName(), and cass-operator's
+	// GetDatacenterServiceName() re-sanitizes the cluster name too -- both via
+	// cassdcapi.CleanupForKubernetes, which rewrites any name that isn't
+	// already a valid DNS-1035 label (e.g. one starting with a digit).
+	// buildConnectionDetails used to build both names from the raw Instance
+	// name, so for an Instance like "123-cassandra" it looked up a secret
+	// ("123-cassandra-superuser") and host ("123-cassandra-dc1-...-service")
+	// that were never the ones k8ssandra-operator/cass-operator actually
+	// created (they sanitize to "cassandra-superuser" and
+	// "cassandra-dc1-...-service"), so Status() failed to find the secret
+	// forever, even on a fully healthy cluster.
+	t.Run("secret and host names match k8ssandra-operator's sanitized cluster name", func(t *testing.T) {
+		t.Parallel()
+
+		instance := newTestInstance(map[string]corev1alpha1.ComponentSpec{
+			common.ComponentEngine: {Type: common.ComponentTypeCassandra},
+		}, nil)
+		instance.Name = "123-cassandra"
+
+		secret := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{Name: "cassandra-superuser", Namespace: instance.Namespace},
+			Data:       map[string][]byte{"username": []byte("u"), "password": []byte("p")},
+		}
+		c := fakeClientContext(instance, secret)
+
+		details, err := buildConnectionDetails(c)
+		if assert.NoError(t, err) {
+			assert.Equal(t, "u", details.Username)
+			assert.True(t, strings.HasPrefix(details.Host, "cassandra-dc1-"),
+				"host %q should be derived from the sanitized cluster name, not the raw Instance name", details.Host)
+		}
+	})
+
+	t.Run("already-DNS-1035-safe name is left unchanged", func(t *testing.T) {
+		t.Parallel()
+
+		instance := newTestInstance(map[string]corev1alpha1.ComponentSpec{
+			common.ComponentEngine: {Type: common.ComponentTypeCassandra},
+		}, nil)
+
+		secret := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{Name: instance.Name + "-superuser", Namespace: instance.Namespace},
+			Data:       map[string][]byte{"username": []byte("u"), "password": []byte("p")},
+		}
+		c := fakeClientContext(instance, secret)
+
+		details, err := buildConnectionDetails(c)
+		if assert.NoError(t, err) {
+			assert.True(t, strings.HasPrefix(details.Host, instance.Name+"-dc1-"))
+		}
+	})
 }

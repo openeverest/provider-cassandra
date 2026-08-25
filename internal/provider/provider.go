@@ -346,8 +346,18 @@ func cassandraInitialized(kc *k8ssandraapi.K8ssandraCluster) bool {
 
 // buildConnectionDetails reads the generated superuser secret and combines it
 // with the CQL service host.
+//
+// Both names are derived from cassdcapi.CleanupForKubernetes(c.Name()), not
+// c.Name() verbatim: k8ssandra-operator names the secret from
+// K8ssandraCluster.SanitizedName(), and cass-operator's
+// GetDatacenterServiceName() re-sanitizes the cluster name at call time, so
+// for any Instance name that isn't already a valid DNS-1035 label (e.g. one
+// starting with a digit) the real secret and service names diverge from the
+// raw Instance name.
 func buildConnectionDetails(c *controller.Context) (controller.ConnectionDetails, error) {
-	secretName := c.Name() + "-superuser"
+	clusterName := cassdcapi.CleanupForKubernetes(c.Name())
+
+	secretName := clusterName + "-superuser"
 	secret := &corev1.Secret{}
 	if err := c.Get(secret, secretName); err != nil {
 		return controller.ConnectionDetails{}, fmt.Errorf("get superuser secret %s: %w", secretName, err)
@@ -357,7 +367,7 @@ func buildConnectionDetails(c *controller.Context) (controller.ConnectionDetails
 	if err != nil {
 		return controller.ConnectionDetails{}, err
 	}
-	host := fmt.Sprintf("%s-%s-service", c.Name(), dcName)
+	host := fmt.Sprintf("%s-%s-service", clusterName, dcName)
 
 	return controller.ConnectionDetails{
 		Type:     common.ProviderShortName,
