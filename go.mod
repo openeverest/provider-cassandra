@@ -6,7 +6,7 @@ require (
 	github.com/k8ssandra/cass-operator v1.31.0
 	github.com/k8ssandra/k8ssandra-operator v1.32.7-0.20260807121350-7e68cd0cc1d4
 	github.com/openeverest/openeverest/v2 v2.0.0-dev.1.0.20260721150452-3ea180918896
-	github.com/stretchr/testify v1.11.1
+	github.com/stretchr/testify v1.12.1
 	k8s.io/api v0.36.0
 	k8s.io/apimachinery v0.36.0
 	k8s.io/utils v0.0.0-20260319190234-28399d86e0b5
@@ -100,7 +100,7 @@ require (
 	github.com/oasdiff/yaml v0.1.1 // indirect
 	github.com/oasdiff/yaml3 v0.0.14 // indirect
 	github.com/oklog/ulid/v2 v2.1.1 // indirect
-	github.com/openeverest/provider-sdk v0.1.0 // indirect
+	github.com/openeverest/provider-sdk v0.1.1-0.20260825120416-61bf572d2c47 // indirect
 	github.com/pavel-v-chernykh/keystore-go v2.1.0+incompatible // indirect
 	github.com/percona/everest-operator v0.6.0-dev1.0.20260429065444-70caa52c384a // indirect
 	github.com/percona/percona-backup-mongodb v1.8.1-0.20251104101930-05ab6d7e1004 // indirect
@@ -138,7 +138,7 @@ require (
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.28.0 // indirect
 	go.yaml.in/yaml/v2 v2.4.4 // indirect
-	go.yaml.in/yaml/v3 v3.0.4 // indirect
+	go.yaml.in/yaml/v3 v3.0.5 // indirect
 	golang.org/x/crypto v0.52.0 // indirect
 	golang.org/x/mod v0.36.0 // indirect
 	golang.org/x/net v0.55.0 // indirect

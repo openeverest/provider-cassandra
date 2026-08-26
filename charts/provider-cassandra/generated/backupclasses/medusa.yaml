@@ -9,14 +9,17 @@ spec:
   displayName: Medusa Backup Class
   executionMode: ProviderManaged
   parametersSchema:
-    openAPIV3Schema: MedusaBackupParameters
+    openAPIV3Schema:
+      type: object
   providerManaged:
     limits: {}
     pitrParametersSchema:
-      openAPIV3Schema: MedusaPITRParameters
+      openAPIV3Schema:
+        type: object
     supportsPITR: false
   restoreParametersSchema:
-    openAPIV3Schema: MedusaRestoreParameters
+    openAPIV3Schema:
+      type: object
   supportedProviders:
     - provider-cassandra
   uiSchema:
