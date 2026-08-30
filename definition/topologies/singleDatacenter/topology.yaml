@@ -64,7 +64,7 @@ ui:
                             groupType: line
                             components:
                                 cpu:
-                                    path: spec.components.engine.resources.requests.cpu
+                                    path: spec.components.engine.resources.limits.cpu
                                     uiType: number
                                     fieldParams:
                                         label: CPU
@@ -74,7 +74,7 @@ ui:
                                         min: 1
                                         required: true
                                 memory:
-                                    path: spec.components.engine.resources.requests.memory
+                                    path: spec.components.engine.resources.limits.memory
                                     uiType: number
                                     fieldParams:
                                         label: Memory
