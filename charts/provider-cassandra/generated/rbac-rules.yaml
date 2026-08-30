@@ -147,6 +147,7 @@
     - medusa.k8ssandra.io
   resources:
     - medusabackupjobs
+    - medusabackupschedules
     - medusarestorejobs
   verbs:
     - create
@@ -160,6 +161,7 @@
     - medusa.k8ssandra.io
   resources:
     - medusabackupjobs/status
+    - medusabackupschedules/status
     - medusarestorejobs/status
   verbs:
     - get
