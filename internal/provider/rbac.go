@@ -29,6 +29,8 @@ package provider
 // +kubebuilder:rbac:groups=medusa.k8ssandra.io,resources=medusarestorejobs,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=medusa.k8ssandra.io,resources=medusarestorejobs/status,verbs=get
 // +kubebuilder:rbac:groups=medusa.k8ssandra.io,resources=medusabackups,verbs=get;list;watch
+// +kubebuilder:rbac:groups=medusa.k8ssandra.io,resources=medusabackupschedules,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=medusa.k8ssandra.io,resources=medusabackupschedules/status,verbs=get
 
 // =============================================================================
 // OPENEVEREST BACKUP RESOURCES

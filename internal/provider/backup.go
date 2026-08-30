@@ -65,13 +65,21 @@ func buildMedusa(c *controller.Context) (*medusaapi.MedusaClusterTemplate, error
 			Prefix:           c.Name(),
 			StorageSecretRef: corev1.LocalObjectReference{Name: s3.CredentialsSecretRef.Name},
 			Secure:           s3.VerifyTLS == nil || *s3.VerifyTLS,
+			MaxBackupCount:   int(maxRetentionCopies(backupCfg.Storages[0].Schedules)),
 		},
 	}, nil
 }
 
 // SyncBackup creates or updates the MedusaBackupJob for a Backup CR and maps
-// its status to an OpenEverest backup execution status.
+// its status to an OpenEverest backup execution status. Backups mirrored from
+// a schedule's cron trigger (see Mirror) are dispatched to syncScheduledRun,
+// since their MedusaBackupJob already exists, created by k8ssandra-operator's
+// own scheduler rather than by this method.
 func (p *Provider) SyncBackup(c *controller.Context, backup *backupv1alpha1.Backup) (controller.BackupExecutionStatus, error) {
+	if backup.Spec.ScheduleName != "" {
+		return syncScheduledRun(c, backup)
+	}
+
 	dcName, err := datacenterNameFor(c)
 	if err != nil {
 		return controller.BackupExecutionStatus{}, err
@@ -87,6 +95,49 @@ func (p *Provider) SyncBackup(c *controller.Context, backup *backupv1alpha1.Back
 		return controller.BackupExecutionStatus{}, err
 	}
 
+	return mapBackupJobStatus(job), nil
+}
+
+// syncScheduledRun reports the status of a mirrored scheduled backup from its
+// underlying MedusaBackupJob, which shares the Backup CR's name and was
+// already created by k8ssandra-operator's MedusaBackupScheduleReconciler.
+// Unlike SyncBackup's on-demand path, this never creates a MedusaBackupJob --
+// it only observes one and adopts it.
+func syncScheduledRun(c *controller.Context, backup *backupv1alpha1.Backup) (controller.BackupExecutionStatus, error) {
+	job := &medusaapi.MedusaBackupJob{}
+	if err := c.Get(job, backup.Name); err != nil {
+		if apierrors.IsNotFound(err) {
+			return controller.BackupExecutionStatus{
+				State:   backupv1alpha1.BackupStatePending,
+				Message: "waiting for scheduled MedusaBackupJob",
+			}, nil
+		}
+		return controller.BackupExecutionStatus{}, fmt.Errorf("get MedusaBackupJob %s: %w", backup.Name, err)
+	}
+
+	// k8ssandra-operator's schedule reconciler creates this job with no
+	// owner reference, but medusabackupjob_controller.go races to add its
+	// own non-controller CassandraDatacenter owner reference as soon as it
+	// first reconciles the job -- checking len(OwnerReferences) == 0 would
+	// then see that unrelated reference and wrongly conclude the job is
+	// already adopted. Check specifically for a *controller* owner, which
+	// only this method or SyncBackup's on-demand path ever sets.
+	if metav1.GetControllerOf(job) == nil {
+		if err := controllerutil.SetControllerReference(backup, job, c.Client().Scheme()); err != nil {
+			return controller.BackupExecutionStatus{}, fmt.Errorf("adopt MedusaBackupJob %s: %w", job.Name, err)
+		}
+		if err := c.Client().Update(c.Context(), job); err != nil {
+			return controller.BackupExecutionStatus{}, fmt.Errorf("update MedusaBackupJob %s owner: %w", job.Name, err)
+		}
+	}
+
+	return mapBackupJobStatus(job), nil
+}
+
+// mapBackupJobStatus translates a MedusaBackupJob's status into an
+// OpenEverest backup execution status. Shared by on-demand backups
+// (SyncBackup) and mirrored scheduled runs (syncScheduledRun).
+func mapBackupJobStatus(job *medusaapi.MedusaBackupJob) controller.BackupExecutionStatus {
 	exec := controller.BackupExecutionStatus{
 		OperatorBackupRef: &commonv1alpha1.TypedObjectRef{
 			Group: medusaapi.GroupVersion.Group,
@@ -107,7 +158,7 @@ func (p *Provider) SyncBackup(c *controller.Context, backup *backupv1alpha1.Back
 	case !job.Status.StartTime.IsZero():
 		exec.State = backupv1alpha1.BackupStateRunning
 	}
-	return exec, nil
+	return exec
 }
 
 // SyncRestore resolves the source Backup, creates or updates the

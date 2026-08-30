@@ -24,7 +24,8 @@ executionMode: ProviderManaged
 parametersSchema:
     openAPIV3Schema: MedusaBackupParameters
 providerManaged:
-    limits: {}
+    limits:
+        maxStorages: 1
     pitrParametersSchema:
         openAPIV3Schema: MedusaPITRParameters
     supportsPITR: false

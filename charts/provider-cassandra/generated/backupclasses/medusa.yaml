@@ -12,7 +12,8 @@ spec:
     openAPIV3Schema:
       type: object
   providerManaged:
-    limits: {}
+    limits:
+      maxStorages: 1
     pitrParametersSchema:
       openAPIV3Schema:
         type: object

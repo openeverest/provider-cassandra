@@ -148,7 +148,11 @@ func (p *Provider) Sync(c *controller.Context) error {
 	}
 	kc.Spec.Medusa = medusa
 
-	return c.Apply(kc)
+	if err := c.Apply(kc); err != nil {
+		return err
+	}
+
+	return SyncScheduledBackups(c)
 }
 
 // buildCassandra translates the engine component spec into a single-datacenter
