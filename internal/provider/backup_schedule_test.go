@@ -24,7 +24,9 @@ import (
 	"github.com/stretchr/testify/require"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/utils/ptr"
 
+	backupv1alpha1 "github.com/openeverest/openeverest/v2/api/backup/v1alpha1"
 	commonv1alpha1 "github.com/openeverest/openeverest/v2/api/common/v1alpha1"
 	corev1alpha1 "github.com/openeverest/openeverest/v2/api/core/v1alpha1"
 	"github.com/openeverest/openeverest/v2/provider-runtime/controller"
@@ -222,23 +224,60 @@ func TestMirror(t *testing.T) {
 
 	p := &Provider{}
 
-	t.Run("on-demand job with an owner reference is skipped", func(t *testing.T) {
+	t.Run("on-demand job with a controller owner reference is skipped", func(t *testing.T) {
 		t.Parallel()
 		instance := backupInstance(nil)
 		c := fakeClientContext(instance)
 
 		job := &medusaapi.MedusaBackupJob{
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      "some-backup",
+				// A name that would otherwise match the scheduled-run
+				// pattern, so this test actually exercises the owner-ref
+				// discriminator rather than short-circuiting on the name
+				// check.
+				Name:      "sched-deadbeef-1700000000",
 				Namespace: instance.Namespace,
 				OwnerReferences: []metav1.OwnerReference{
-					{APIVersion: "backup.openeverest.io/v1alpha1", Kind: "Backup", Name: "some-backup", UID: "abc"},
+					{
+						APIVersion: "backup.openeverest.io/v1alpha1", Kind: "Backup",
+						Name: "sched-deadbeef-1700000000", UID: "abc",
+						Controller: ptr.To(true),
+					},
 				},
 			},
 		}
 		got, err := p.Mirror(context.Background(), c.Client(), job)
 		require.NoError(t, err)
 		assert.Nil(t, got)
+	})
+
+	// Regression test: medusabackupjob_controller.go (k8ssandra-operator)
+	// adds its own non-controller CassandraDatacenter owner reference to
+	// every MedusaBackupJob, on-demand and scheduled alike, as soon as it
+	// first reconciles one. Mirror must not mistake that unrelated
+	// reference for "already adopted by a Backup CR" and skip a legitimate
+	// scheduled run.
+	t.Run("scheduled job racing a non-controller CassandraDatacenter owner reference is still mirrored", func(t *testing.T) {
+		t.Parallel()
+		instance := backupInstance([]corev1alpha1.InstanceBackupSchedule{
+			{Name: "daily", Enabled: true, Cron: "0 2 * * *"},
+		})
+		c := fakeClientContext(instance)
+		require.NoError(t, SyncScheduledBackups(c))
+
+		schedName := medusaScheduleName(instance.Name, "daily")
+		job := &medusaapi.MedusaBackupJob{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      schedName + "-1700000000",
+				Namespace: instance.Namespace,
+				OwnerReferences: []metav1.OwnerReference{
+					{APIVersion: "cassandra.datastax.com/v1beta1", Kind: "CassandraDatacenter", Name: "dc1", UID: "cassdc-uid"},
+				},
+			},
+		}
+		got, err := p.Mirror(context.Background(), c.Client(), job)
+		require.NoError(t, err)
+		assert.NotNil(t, got)
 	})
 
 	t.Run("job name without a scheduled-run suffix is skipped", func(t *testing.T) {
@@ -289,4 +328,44 @@ func TestMirror(t *testing.T) {
 			assert.Equal(t, "daily", got.Spec.ScheduleName)
 		}
 	})
+}
+
+// Regression test for the same race as TestMirror's non-controller-owner
+// case, on the SyncBackup side: syncScheduledRun must adopt a MedusaBackupJob
+// that already carries medusabackupjob_controller.go's non-controller
+// CassandraDatacenter owner reference, not mistake it for already being
+// owned by a Backup CR.
+func TestSyncScheduledRun(t *testing.T) {
+	t.Parallel()
+
+	instance := backupInstance(nil)
+	backup := &backupv1alpha1.Backup{
+		ObjectMeta: metav1.ObjectMeta{Name: "sched-abc-1700000000", Namespace: instance.Namespace},
+		Spec:       backupv1alpha1.BackupSpec{ScheduleName: "daily"},
+	}
+	job := &medusaapi.MedusaBackupJob{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      backup.Name,
+			Namespace: instance.Namespace,
+			OwnerReferences: []metav1.OwnerReference{
+				{APIVersion: "cassandra.datastax.com/v1beta1", Kind: "CassandraDatacenter", Name: "dc1", UID: "cassdc-uid"},
+			},
+		},
+		Spec: medusaapi.MedusaBackupJobSpec{CassandraDatacenter: "dc1"},
+	}
+	c := fakeClientContext(instance, job)
+
+	exec, err := syncScheduledRun(c, backup)
+	require.NoError(t, err)
+	assert.Equal(t, backupv1alpha1.BackupStatePending, exec.State)
+
+	updated := &medusaapi.MedusaBackupJob{}
+	require.NoError(t, c.Get(updated, job.Name))
+	assert.Len(t, updated.OwnerReferences, 2, "the pre-existing CassandraDatacenter reference must be kept alongside the new Backup owner reference")
+
+	controllerRef := metav1.GetControllerOf(updated)
+	if assert.NotNil(t, controllerRef, "syncScheduledRun must adopt the job despite the pre-existing non-controller owner reference") {
+		assert.Equal(t, "Backup", controllerRef.Kind)
+		assert.Equal(t, backup.Name, controllerRef.Name)
+	}
 }

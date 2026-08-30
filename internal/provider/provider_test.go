@@ -29,6 +29,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
+	backupv1alpha1 "github.com/openeverest/openeverest/v2/api/backup/v1alpha1"
 	corev1alpha1 "github.com/openeverest/openeverest/v2/api/core/v1alpha1"
 	"github.com/openeverest/openeverest/v2/provider-runtime/controller"
 
@@ -61,6 +62,7 @@ func fakeClientContext(instance *corev1alpha1.Instance, objs ...client.Object) *
 	scheme := runtime.NewScheme()
 	_ = corev1.AddToScheme(scheme)
 	_ = corev1alpha1.AddToScheme(scheme)
+	_ = backupv1alpha1.AddToScheme(scheme)
 	_ = k8ssandraapi.AddToScheme(scheme)
 	_ = medusaapi.AddToScheme(scheme)
 	fakeClient := fake.NewClientBuilder().WithScheme(scheme).WithObjects(objs...).Build()

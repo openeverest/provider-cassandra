@@ -116,9 +116,13 @@ func syncScheduledRun(c *controller.Context, backup *backupv1alpha1.Backup) (con
 	}
 
 	// k8ssandra-operator's schedule reconciler creates this job with no
-	// owner reference; adopt it here so BackupWatches' owner-based watch
-	// routes future status changes to this Backup CR.
-	if len(job.OwnerReferences) == 0 {
+	// owner reference, but medusabackupjob_controller.go races to add its
+	// own non-controller CassandraDatacenter owner reference as soon as it
+	// first reconciles the job -- checking len(OwnerReferences) == 0 would
+	// then see that unrelated reference and wrongly conclude the job is
+	// already adopted. Check specifically for a *controller* owner, which
+	// only this method or SyncBackup's on-demand path ever sets.
+	if metav1.GetControllerOf(job) == nil {
 		if err := controllerutil.SetControllerReference(backup, job, c.Client().Scheme()); err != nil {
 			return controller.BackupExecutionStatus{}, fmt.Errorf("adopt MedusaBackupJob %s: %w", job.Name, err)
 		}

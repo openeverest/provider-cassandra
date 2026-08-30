@@ -213,9 +213,16 @@ func (p *Provider) OperatorBackupType() client.Object {
 // trigger -- as a first-class Backup CR named after the job. On-demand jobs
 // (created by SyncBackup, which sets a controller owner reference to their
 // Backup CR) are skipped: they're already tracked.
+//
+// Checking for a *controller* owner specifically, not just any owner
+// reference, matters here: medusabackupjob_controller.go adds its own
+// non-controller CassandraDatacenter owner reference to every
+// MedusaBackupJob (on-demand and scheduled alike) as soon as it first
+// reconciles one, which can race ahead of this method seeing the job. A bare
+// "len(OwnerReferences) > 0" check would then skip legitimate scheduled runs.
 func (p *Provider) Mirror(ctx context.Context, cl client.Client, obj client.Object) (*backupv1alpha1.Backup, error) {
 	job, ok := obj.(*medusaapi.MedusaBackupJob)
-	if !ok || len(job.OwnerReferences) > 0 {
+	if !ok || metav1.GetControllerOf(job) != nil {
 		return nil, nil
 	}
 
