@@ -16,6 +16,7 @@ package provider
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -33,8 +34,21 @@ import (
 	corev1alpha1 "github.com/openeverest/openeverest/v2/api/core/v1alpha1"
 	"github.com/openeverest/openeverest/v2/provider-runtime/controller"
 
+	"github.com/openeverest/provider-cassandra/definition/components"
 	"github.com/openeverest/provider-cassandra/internal/common"
 )
+
+// engineWithParameters builds an engine ComponentSpec carrying params as its
+// spec.components.engine.parameters payload, the way the API server would
+// after validating it against components.CassandraParameters.
+func engineWithParameters(t *testing.T, params components.CassandraParameters) corev1alpha1.ComponentSpec {
+	t.Helper()
+	raw, err := json.Marshal(params)
+	if err != nil {
+		t.Fatalf("marshaling parameters: %v", err)
+	}
+	return corev1alpha1.ComponentSpec{Parameters: &runtime.RawExtension{Raw: raw}}
+}
 
 // newTestInstance builds an Instance for tests that only need
 // spec.components and spec.topology; Validate and buildTelemetry read
@@ -321,6 +335,102 @@ func TestBuildTelemetry(t *testing.T) {
 	})
 }
 
+func TestResolveJvmOptions(t *testing.T) {
+	t.Parallel()
+
+	t.Run("no parameters means no jvm options", func(t *testing.T) {
+		t.Parallel()
+		got, err := resolveJvmOptions(corev1alpha1.ComponentSpec{})
+		assert.NoError(t, err)
+		assert.Nil(t, got.InitialHeapSize)
+		assert.Nil(t, got.MaxHeapSize)
+	})
+
+	t.Run("empty heap fields mean no jvm options", func(t *testing.T) {
+		t.Parallel()
+		engine := engineWithParameters(t, components.CassandraParameters{})
+		got, err := resolveJvmOptions(engine)
+		assert.NoError(t, err)
+		assert.Nil(t, got.InitialHeapSize)
+		assert.Nil(t, got.MaxHeapSize)
+	})
+
+	t.Run("both heap sizes are parsed", func(t *testing.T) {
+		t.Parallel()
+		engine := engineWithParameters(t, components.CassandraParameters{
+			HeapInitialSize: "1Gi",
+			HeapMaxSize:     "2Gi",
+		})
+		got, err := resolveJvmOptions(engine)
+		if assert.NoError(t, err) && assert.NotNil(t, got.InitialHeapSize) && assert.NotNil(t, got.MaxHeapSize) {
+			assert.Equal(t, resource.MustParse("1Gi"), *got.InitialHeapSize)
+			assert.Equal(t, resource.MustParse("2Gi"), *got.MaxHeapSize)
+		}
+	})
+
+	t.Run("only max heap size is accepted", func(t *testing.T) {
+		t.Parallel()
+		engine := engineWithParameters(t, components.CassandraParameters{HeapMaxSize: "4Gi"})
+		got, err := resolveJvmOptions(engine)
+		if assert.NoError(t, err) && assert.NotNil(t, got.MaxHeapSize) {
+			assert.Nil(t, got.InitialHeapSize)
+			assert.Equal(t, resource.MustParse("4Gi"), *got.MaxHeapSize)
+		}
+	})
+
+	t.Run("malformed heap size is rejected", func(t *testing.T) {
+		t.Parallel()
+		engine := engineWithParameters(t, components.CassandraParameters{HeapInitialSize: "not-a-quantity"})
+		_, err := resolveJvmOptions(engine)
+		if assert.Error(t, err) {
+			assert.Contains(t, err.Error(), "heapInitialSize")
+		}
+	})
+
+	// Regression guard: the JVM refuses to start when -Xms > -Xmx, so this
+	// must be caught here rather than surfacing as a CrashLoopBackOff.
+	t.Run("initial heap size exceeding max heap size is rejected", func(t *testing.T) {
+		t.Parallel()
+		engine := engineWithParameters(t, components.CassandraParameters{
+			HeapInitialSize: "2Gi",
+			HeapMaxSize:     "1Gi",
+		})
+		_, err := resolveJvmOptions(engine)
+		if assert.Error(t, err) {
+			assert.Contains(t, err.Error(), "must not exceed")
+		}
+	})
+
+	t.Run("equal initial and max heap size is accepted", func(t *testing.T) {
+		t.Parallel()
+		engine := engineWithParameters(t, components.CassandraParameters{
+			HeapInitialSize: "1Gi",
+			HeapMaxSize:     "1Gi",
+		})
+		_, err := resolveJvmOptions(engine)
+		assert.NoError(t, err)
+	})
+}
+
+func TestBuildCassandraConfig(t *testing.T) {
+	t.Parallel()
+
+	t.Run("no heap sizes means no cassandra config", func(t *testing.T) {
+		t.Parallel()
+		assert.Nil(t, buildCassandraConfig(k8ssandraapi.JvmOptions{}))
+	})
+
+	t.Run("a set heap size produces a cassandra config", func(t *testing.T) {
+		t.Parallel()
+		heap := resource.MustParse("1Gi")
+		got := buildCassandraConfig(k8ssandraapi.JvmOptions{MaxHeapSize: &heap})
+		if assert.NotNil(t, got) && assert.NotNil(t, got.JvmOptions.MaxHeapSize) {
+			assert.Equal(t, heap, *got.JvmOptions.MaxHeapSize)
+			assert.Nil(t, got.JvmOptions.InitialHeapSize)
+		}
+	})
+}
+
 func TestValidate(t *testing.T) {
 	t.Parallel()
 
@@ -368,6 +478,25 @@ func TestValidate(t *testing.T) {
 			components: withEngine(corev1alpha1.ComponentSpec{}),
 			topology:   &corev1alpha1.TopologySpec{Type: "multiDatacenter"},
 			wantErr:    `unsupported topology "multiDatacenter"`,
+		},
+		"valid heap sizes are accepted": {
+			components: withEngine(engineWithParameters(t, components.CassandraParameters{
+				HeapInitialSize: "1Gi",
+				HeapMaxSize:     "2Gi",
+			})),
+		},
+		"malformed heap size is rejected": {
+			components: withEngine(engineWithParameters(t, components.CassandraParameters{
+				HeapMaxSize: "not-a-quantity",
+			})),
+			wantErr: `"engine" heapMaxSize`,
+		},
+		"heapInitialSize exceeding heapMaxSize is rejected": {
+			components: withEngine(engineWithParameters(t, components.CassandraParameters{
+				HeapInitialSize: "2Gi",
+				HeapMaxSize:     "1Gi",
+			})),
+			wantErr: "must not exceed",
 		},
 	}
 

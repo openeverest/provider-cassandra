@@ -23,6 +23,14 @@ spec:
     backupAgent:
       type: medusa
     engine:
+      parametersSchema:
+        openAPIV3Schema:
+          properties:
+            heapInitialSize:
+              type: string
+            heapMaxSize:
+              type: string
+          type: object
       type: cassandra
     monitoring:
       type: prometheus

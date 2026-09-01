@@ -1,6 +1,7 @@
 package provider
 
 import (
+	"encoding/json"
 	"fmt"
 	"hash/fnv"
 
@@ -18,6 +19,7 @@ import (
 	corev1alpha1 "github.com/openeverest/openeverest/v2/api/core/v1alpha1"
 	"github.com/openeverest/openeverest/v2/provider-runtime/controller"
 
+	"github.com/openeverest/provider-cassandra/definition/components"
 	"github.com/openeverest/provider-cassandra/internal/common"
 )
 
@@ -118,6 +120,10 @@ func (p *Provider) Validate(c *controller.Context) error {
 		return fmt.Errorf("%q replicas must be at least 1", common.ComponentEngine)
 	}
 
+	if _, err := resolveJvmOptions(engine); err != nil {
+		return err
+	}
+
 	if topology := c.Instance().Spec.Topology; topology != nil && topology.Type != "" &&
 		topology.Type != common.TopologySingleDatacenter {
 		return fmt.Errorf("unsupported topology %q: this provider only supports %q",
@@ -181,14 +187,20 @@ func (p *Provider) buildCassandra(c *controller.Context) (*k8ssandraapi.Cassandr
 	dcName := resolveDatacenterName(c.Name(), existing)
 	resources := resolveEngineResources(engine.Resources, existing)
 
+	jvmOptions, err := resolveJvmOptions(engine)
+	if err != nil {
+		return nil, err
+	}
+
 	return &k8ssandraapi.CassandraClusterTemplate{
 		ServerType: k8ssandraapi.ServerDistributionCassandra,
 		DatacenterOptions: k8ssandraapi.DatacenterOptions{
-			ServerVersion: version,
-			ServerImage:   image,
-			StorageConfig: buildStorageConfig(engine.Storage),
-			Resources:     resources,
-			Telemetry:     buildTelemetry(c),
+			ServerVersion:   version,
+			ServerImage:     image,
+			StorageConfig:   buildStorageConfig(engine.Storage),
+			Resources:       resources,
+			Telemetry:       buildTelemetry(c),
+			CassandraConfig: buildCassandraConfig(jvmOptions),
 		},
 		Datacenters: []k8ssandraapi.CassandraDatacenterTemplate{
 			{
@@ -288,6 +300,58 @@ func resolveEngineImage(c *controller.Context, engine corev1alpha1.ComponentSpec
 		image = controller.GetDefaultImageForComponent(spec, common.ComponentEngine)
 	}
 	return version, image, nil
+}
+
+// resolveJvmOptions parses the engine component's heapInitialSize and
+// heapMaxSize parameters (see components.CassandraParameters) into
+// k8ssandra-operator's JvmOptions. Both are optional: left unset, the zero
+// value is returned and buildCassandraConfig produces no CassandraConfig,
+// leaving k8ssandra-operator's own heap auto-sizing (based on the engine
+// container's memory request/limit) in charge, matching prior behavior.
+func resolveJvmOptions(engine corev1alpha1.ComponentSpec) (k8ssandraapi.JvmOptions, error) {
+	var params components.CassandraParameters
+	if engine.Parameters != nil && engine.Parameters.Raw != nil {
+		if err := json.Unmarshal(engine.Parameters.Raw, &params); err != nil {
+			return k8ssandraapi.JvmOptions{}, fmt.Errorf("decoding %q parameters: %w", common.ComponentEngine, err)
+		}
+	}
+
+	var jvmOptions k8ssandraapi.JvmOptions
+	if params.HeapInitialSize != "" {
+		q, err := resource.ParseQuantity(params.HeapInitialSize)
+		if err != nil {
+			return k8ssandraapi.JvmOptions{}, fmt.Errorf("%q heapInitialSize %q: %w", common.ComponentEngine, params.HeapInitialSize, err)
+		}
+		jvmOptions.InitialHeapSize = &q
+	}
+	if params.HeapMaxSize != "" {
+		q, err := resource.ParseQuantity(params.HeapMaxSize)
+		if err != nil {
+			return k8ssandraapi.JvmOptions{}, fmt.Errorf("%q heapMaxSize %q: %w", common.ComponentEngine, params.HeapMaxSize, err)
+		}
+		jvmOptions.MaxHeapSize = &q
+	}
+
+	// The JVM refuses to start when -Xms exceeds -Xmx, so reject that
+	// combination up front rather than letting it surface as an opaque
+	// CrashLoopBackOff on the Cassandra container.
+	if jvmOptions.InitialHeapSize != nil && jvmOptions.MaxHeapSize != nil &&
+		jvmOptions.InitialHeapSize.Cmp(*jvmOptions.MaxHeapSize) > 0 {
+		return k8ssandraapi.JvmOptions{}, fmt.Errorf("%q heapInitialSize (%s) must not exceed heapMaxSize (%s)",
+			common.ComponentEngine, jvmOptions.InitialHeapSize, jvmOptions.MaxHeapSize)
+	}
+
+	return jvmOptions, nil
+}
+
+// buildCassandraConfig wraps jvmOptions in a CassandraConfig, or returns nil
+// when neither heap size was set, so DatacenterOptions.CassandraConfig stays
+// absent exactly as it did before heap-size parameters existed.
+func buildCassandraConfig(jvmOptions k8ssandraapi.JvmOptions) *k8ssandraapi.CassandraConfig {
+	if jvmOptions.InitialHeapSize == nil && jvmOptions.MaxHeapSize == nil {
+		return nil
+	}
+	return &k8ssandraapi.CassandraConfig{JvmOptions: jvmOptions}
 }
 
 // buildStorageConfig maps the engine storage requirements onto the cass-operator

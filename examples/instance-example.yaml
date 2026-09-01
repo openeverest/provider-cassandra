@@ -26,3 +26,8 @@ spec:
           memory: 4Gi
       storage:
         size: 25Gi
+      # Optional: pin the JVM heap explicitly instead of relying on
+      # k8ssandra-operator's auto-sizing (based on the resources above).
+      # parameters:
+      #   heapInitialSize: 1Gi
+      #   heapMaxSize: 1Gi
