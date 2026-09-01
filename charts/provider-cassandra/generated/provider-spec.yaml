@@ -47,6 +47,30 @@ spec:
       sections:
         advanced:
           components:
+            heapSize:
+              components:
+                heapInitialSize:
+                  fieldParams:
+                    badge: Gi
+                    badgeToApi: true
+                    label: Initial heap size
+                    step: 0.1
+                  path: spec.components.engine.parameters.heapInitialSize
+                  uiType: number
+                  validation:
+                    min: 0
+                heapMaxSize:
+                  fieldParams:
+                    badge: Gi
+                    badgeToApi: true
+                    label: Max heap size
+                    step: 0.1
+                  path: spec.components.engine.parameters.heapMaxSize
+                  uiType: number
+                  validation:
+                    min: 0
+              groupType: line
+              uiType: group
             storageClass:
               dataSource:
                 provider: storageClasses
@@ -61,6 +85,9 @@ spec:
               uiType: select
               validation:
                 required: true
+          componentsOrder:
+            - storageClass
+            - heapSize
           description: Configure advanced settings for your database.
           label: Advanced configuration
         databaseVersion:
