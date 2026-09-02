@@ -7,6 +7,7 @@ components:
         type: medusa
     engine:
         type: cassandra
+        parametersSchema: CassandraParameters
     monitoring:
         type: prometheus
 name: provider-cassandra
