@@ -123,6 +123,33 @@ ui:
                         required: true
                     dataSource:
                         provider: storageClasses
+                heapSize:
+                    uiType: group
+                    groupType: line
+                    components:
+                        heapInitialSize:
+                            path: spec.components.engine.parameters.heapInitialSize
+                            uiType: number
+                            fieldParams:
+                                label: Initial heap size
+                                step: 0.1
+                                badge: Gi
+                                badgeToApi: true
+                            validation:
+                                min: 0
+                        heapMaxSize:
+                            path: spec.components.engine.parameters.heapMaxSize
+                            uiType: number
+                            fieldParams:
+                                label: Max heap size
+                                step: 0.1
+                                badge: Gi
+                                badgeToApi: true
+                            validation:
+                                min: 0
+            componentsOrder:
+                - storageClass
+                - heapSize
     sectionsOrder:
         - databaseVersion
         - resources
