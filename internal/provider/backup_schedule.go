@@ -253,7 +253,10 @@ func (p *Provider) Mirror(ctx context.Context, cl client.Client, obj client.Obje
 	return &backupv1alpha1.Backup{
 		ObjectMeta: metav1.ObjectMeta{Name: job.Name, Namespace: job.Namespace},
 		Spec: backupv1alpha1.BackupSpec{
-			InstanceRef:  commonv1alpha1.ObjectRef{Name: instanceName},
+			Origin: backupv1alpha1.BackupOrigin{
+				Type:        backupv1alpha1.BackupOriginTypeInstance,
+				InstanceRef: &commonv1alpha1.ObjectRef{Name: instanceName},
+			},
 			ClassRef:     commonv1alpha1.ObjectRef{Name: className},
 			StorageRef:   commonv1alpha1.ObjectRef{Name: storageName},
 			ScheduleName: scheduleName,
