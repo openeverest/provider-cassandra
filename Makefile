@@ -115,8 +115,10 @@ docker-push: ## Push docker image.
 
 ##@ Helm
 
+# Once Chart.lock exists, `helm dependency build` only resolves repositories added by name.
 .PHONY: helm-deps
 helm-deps: ## Download/update Helm chart dependencies.
+	helm repo add k8ssandra https://helm.k8ssandra.io/stable --force-update
 	helm dependency build $(CHART_DIR)
 
 .PHONY: helm-install
