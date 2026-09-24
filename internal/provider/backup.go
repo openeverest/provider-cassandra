@@ -16,6 +16,8 @@ package provider
 
 import (
 	"fmt"
+	"net/url"
+	"strconv"
 
 	medusaapi "github.com/k8ssandra/k8ssandra-operator/apis/medusa/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
@@ -33,9 +35,18 @@ var _ controller.BackupProvider = (*Provider)(nil)
 var _ controller.BackupWatcher = (*Provider)(nil)
 var _ controller.RestoreWatcher = (*Provider)(nil)
 
-// medusaS3Provider is the Medusa storage backend used for OpenEverest S3
-// BackupStorages, which always carry an explicit endpoint.
-const medusaS3Provider = "s3_compatible"
+const (
+	// medusaS3Provider is the Medusa storage backend used for OpenEverest S3
+	// BackupStorages, which always carry an explicit endpoint.
+	medusaS3Provider = "s3_compatible"
+
+	// medusaCredentialsKey is the Secret key k8ssandra-operator mounts as
+	// Medusa's AWS credentials file (/etc/medusa-secrets/credentials).
+	medusaCredentialsKey = "credentials"
+
+	backupStorageAccessKeyID     = "AWS_ACCESS_KEY_ID"
+	backupStorageSecretAccessKey = "AWS_SECRET_ACCESS_KEY"
+)
 
 // buildMedusa configures Medusa on the cluster from the Instance's backup
 // storage, or returns nil when backups are disabled so the cluster is created
@@ -56,18 +67,96 @@ func buildMedusa(c *controller.Context) (*medusaapi.MedusaClusterTemplate, error
 	}
 
 	s3 := bs.Spec.S3
+	endpoint, err := parseS3Endpoint(s3.EndpointURL)
+	if err != nil {
+		return nil, fmt.Errorf("BackupStorage %s: %w", storageRef.Name, err)
+	}
+	credentialsSecret, err := syncMedusaCredentials(c, s3.CredentialsSecretRef.Name)
+	if err != nil {
+		return nil, err
+	}
+
 	return &medusaapi.MedusaClusterTemplate{
 		StorageProperties: medusaapi.Storage{
 			StorageProvider:  medusaS3Provider,
 			BucketName:       s3.Bucket,
 			Region:           s3.Region,
-			Host:             s3.EndpointURL,
+			Host:             endpoint.host,
+			Port:             endpoint.port,
+			Secure:           endpoint.secure,
+			SslVerify:        s3.VerifyTLS == nil || *s3.VerifyTLS,
 			Prefix:           c.Name(),
-			StorageSecretRef: corev1.LocalObjectReference{Name: s3.CredentialsSecretRef.Name},
-			Secure:           s3.VerifyTLS == nil || *s3.VerifyTLS,
+			StorageSecretRef: corev1.LocalObjectReference{Name: credentialsSecret},
 			MaxBackupCount:   int(maxRetentionCopies(backupCfg.Storages[0].Schedules)),
 		},
 	}, nil
+}
+
+type s3Endpoint struct {
+	host   string
+	port   int
+	secure bool
+}
+
+// parseS3Endpoint splits a BackupStorage endpoint URL into the parts Medusa
+// takes separately: it builds its own URL as "<scheme>://<host>:<port>", so
+// passing the full URL as the host produces an unusable endpoint.
+func parseS3Endpoint(raw string) (s3Endpoint, error) {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return s3Endpoint{}, fmt.Errorf("invalid S3 endpoint URL %q: %w", raw, err)
+	}
+
+	var endpoint s3Endpoint
+	switch u.Scheme {
+	case "https":
+		endpoint.secure = true
+		endpoint.port = 443
+	case "http":
+		endpoint.port = 80
+	default:
+		return s3Endpoint{}, fmt.Errorf("S3 endpoint URL %q must use the http or https scheme", raw)
+	}
+
+	endpoint.host = u.Hostname()
+	if endpoint.host == "" {
+		return s3Endpoint{}, fmt.Errorf("S3 endpoint URL %q has no host", raw)
+	}
+	if p := u.Port(); p != "" {
+		if endpoint.port, err = strconv.Atoi(p); err != nil {
+			return s3Endpoint{}, fmt.Errorf("invalid port in S3 endpoint URL %q: %w", raw, err)
+		}
+	}
+	return endpoint, nil
+}
+
+// syncMedusaCredentials renders the BackupStorage's key pair into the AWS
+// credentials file format Medusa reads, and returns the name of the Secret
+// holding it. The BackupStorage Secret itself can't be mounted directly: it
+// carries AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY, while Medusa expects a
+// single "credentials" file.
+func syncMedusaCredentials(c *controller.Context, sourceSecretName string) (string, error) {
+	source := &corev1.Secret{}
+	if err := c.Get(source, sourceSecretName); err != nil {
+		return "", fmt.Errorf("get BackupStorage credentials Secret %s: %w", sourceSecretName, err)
+	}
+	accessKeyID := source.Data[backupStorageAccessKeyID]
+	secretAccessKey := source.Data[backupStorageSecretAccessKey]
+	if len(accessKeyID) == 0 || len(secretAccessKey) == 0 {
+		return "", fmt.Errorf("BackupStorage credentials Secret %s must contain %s and %s",
+			sourceSecretName, backupStorageAccessKeyID, backupStorageSecretAccessKey)
+	}
+
+	name := c.Name() + "-medusa-storage"
+	secret := &corev1.Secret{ObjectMeta: c.ObjectMeta(name)}
+	secret.Data = map[string][]byte{
+		medusaCredentialsKey: fmt.Appendf(nil, "[default]\naws_access_key_id = %s\naws_secret_access_key = %s\n",
+			accessKeyID, secretAccessKey),
+	}
+	if err := c.Apply(secret); err != nil {
+		return "", fmt.Errorf("apply Medusa credentials Secret %s: %w", name, err)
+	}
+	return name, nil
 }
 
 // SyncBackup creates or updates the MedusaBackupJob for a Backup CR and maps
