@@ -5,4 +5,4 @@ metadata:
 spec:
   components:
     engine:
-      replicas: 2
+      replicas: 4

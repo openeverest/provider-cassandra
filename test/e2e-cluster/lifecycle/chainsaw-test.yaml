@@ -5,9 +5,14 @@ metadata:
   name: lifecycle
 spec:
   description: |
-    Run a real Cassandra cluster through its lifecycle: create a one-node 4.1
-    Instance and write data, scale out, upgrade to 5.0, scale in, resize, check
-    the data survived every step, then delete it and check nothing is left.
+    Run a real Cassandra cluster through its lifecycle: create a three-node 4.1
+    Instance and write data, upgrade to 5.0, scale out to four nodes and back
+    to three, resize, check the data survived every step, then delete it and
+    check nothing is left.
+
+    It starts at three nodes because k8ssandra-operator raises system keyspace
+    replication (capped at 3) without repairing, so growing a smaller cluster
+    leaves logins failing on some nodes until system_auth is repaired.
 
   catch:
     - script:
@@ -32,7 +37,7 @@ spec:
         - apply:
             file: 10-create-instance.yaml
         - assert:
-            timeout: 15m
+            timeout: 20m
             file: 10-assert.yaml
 
     - name: write-data
@@ -40,29 +45,32 @@ spec:
         - script:
             content: |
               ${PROVIDER_ROOT_PATH}/test/e2e-cluster/cql.sh $NAMESPACE cass-lifecycle "
-                CREATE KEYSPACE IF NOT EXISTS e2e WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1};
+                CREATE KEYSPACE IF NOT EXISTS e2e WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 3};
                 CREATE TABLE IF NOT EXISTS e2e.kv (k text PRIMARY KEY, v text);
+                CONSISTENCY ALL;
                 INSERT INTO e2e.kv (k, v) VALUES ('openeverest', 'lifecycle');"
-
-    - name: scale-out
-      try:
-        - patch:
-            file: 20-scale-out.yaml
-        - assert:
-            timeout: 15m
-            file: 20-assert.yaml
 
     - name: upgrade-version
       try:
         - patch:
-            file: 30-upgrade-version.yaml
+            file: 20-upgrade-version.yaml
         - assert:
             timeout: 20m
-            file: 30-assert.yaml
+            file: 20-assert.yaml
         - script:
             content: &check-data |
               ${PROVIDER_ROOT_PATH}/test/e2e-cluster/cql.sh $NAMESPACE cass-lifecycle \
                 "SELECT v FROM e2e.kv WHERE k = 'openeverest';" | grep -q lifecycle
+
+    - name: scale-out
+      try:
+        - patch:
+            file: 30-scale-out.yaml
+        - assert:
+            timeout: 15m
+            file: 30-assert.yaml
+        - script:
+            content: *check-data
 
     - name: scale-in
       try:
@@ -79,7 +87,7 @@ spec:
         - patch:
             file: 50-resize.yaml
         - assert:
-            timeout: 15m
+            timeout: 20m
             file: 50-assert.yaml
         - script:
             content: *check-data

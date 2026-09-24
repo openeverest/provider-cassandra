@@ -1,17 +1,16 @@
-# cass-operator names the StatefulSet "<cluster>-<datacenter>-<rack>-sts".
+# observedGeneration guards against matching a stale status right after the
+# template changes, before the rollout has started.
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
   name: cass-lifecycle-dc1-0b60c5c2-default-sts
 spec:
-  replicas: 2
+  replicas: 3
+  template:
+    spec:
+      (containers[?name == 'cassandra'] | [0].image): k8ssandra/cass-management-api:5.0.4-ubi
+(status.observedGeneration == metadata.generation): true
 status:
-  readyReplicas: 2
----
-apiVersion: cassandra.datastax.com/v1beta1
-kind: CassandraDatacenter
-metadata:
-  name: dc1-0b60c5c2
-status:
-  cassandraOperatorProgress: Ready
-  (length(nodeStatuses)): 2
+  readyReplicas: 3
+  updatedReplicas: 3
+  (currentRevision == updateRevision): true

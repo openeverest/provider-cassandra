@@ -3,9 +3,9 @@ kind: StatefulSet
 metadata:
   name: cass-lifecycle-dc1-0b60c5c2-default-sts
 spec:
-  replicas: 1
+  replicas: 3
 status:
-  readyReplicas: 1
+  readyReplicas: 3
 ---
 apiVersion: cassandra.datastax.com/v1beta1
 kind: CassandraDatacenter
@@ -13,4 +13,4 @@ metadata:
   name: dc1-0b60c5c2
 status:
   cassandraOperatorProgress: Ready
-  (length(nodeStatuses)): 1
+  (length(nodeStatuses)): 3
