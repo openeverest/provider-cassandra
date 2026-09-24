@@ -1,0 +1,16 @@
+apiVersion: core.openeverest.io/v1alpha1
+kind: Instance
+metadata:
+  name: cass-core
+spec:
+  components:
+    engine:
+      replicas: 5
+      resources:
+        requests:
+          cpu: "1"
+          memory: 4Gi
+        limits:
+          memory: 4Gi
+      storage:
+        size: 2Gi

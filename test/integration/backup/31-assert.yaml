@@ -1,0 +1,6 @@
+apiVersion: backup.openeverest.io/v1alpha1
+kind: Backup
+metadata:
+  name: sched-0281f9dd-1767225600
+status:
+  state: Succeeded

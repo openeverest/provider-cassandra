@@ -1,0 +1,13 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: cass-lifecycle-dc1-0b60c5c2-default-sts
+spec:
+  replicas: 2
+  template:
+    spec:
+      (containers[?name == 'cassandra'] | [0].image): k8ssandra/cass-management-api:5.0.4-ubi
+status:
+  readyReplicas: 2
+  updatedReplicas: 2
+  (currentRevision == updateRevision): true

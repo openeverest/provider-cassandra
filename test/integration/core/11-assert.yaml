@@ -1,0 +1,19 @@
+apiVersion: core.openeverest.io/v1alpha1
+kind: Instance
+metadata:
+  name: cass-core
+status:
+  phase: Ready
+  connectionSecretRef:
+    name: cass-core-conn
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: cass-core-conn
+data:
+  (base64_decode(type)): cassandra
+  (base64_decode(host)): cass-core-dc1-32dfcac1-service
+  (base64_decode(port)): "9042"
+  (base64_decode(username)): cass-core-superuser
+  (base64_decode(password)): s3cr3t

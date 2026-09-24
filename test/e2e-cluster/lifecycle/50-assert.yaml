@@ -1,0 +1,12 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: cass-lifecycle-dc1-0b60c5c2-default-sts
+spec:
+  template:
+    spec:
+      (containers[?name == 'cassandra'] | [0].resources.limits.memory): 3Gi
+status:
+  readyReplicas: 1
+  updatedReplicas: 1
+  (currentRevision == updateRevision): true

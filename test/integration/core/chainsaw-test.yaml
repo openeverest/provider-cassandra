@@ -1,0 +1,73 @@
+---
+# Core lifecycle suite. The bundled k8ssandra-operator is not deployed (see the
+# deploy-provider-ci Make target), so this suite checks how the provider maps an
+# Instance onto a K8ssandraCluster and back, simulating the operator by patching
+# CR statuses. Real Cassandra pods are covered by test/e2e-cluster/.
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: core
+spec:
+  description: |
+    Create an Instance and check the generated K8ssandraCluster, simulate the
+    cluster becoming ready and check the connection details, scale, resize and
+    upgrade it, then delete it.
+
+  catch:
+    - script:
+        content: kubectl -n $NAMESPACE get instance,k8ssandracluster -o yaml
+    - podLogs:
+        namespace: provider-system
+        selector: app.kubernetes.io/name=provider-cassandra
+        tail: 100
+
+  steps:
+    - name: provider-deployed
+      try:
+        - assert:
+            file: 00-assert.yaml
+
+    - name: create-instance
+      try:
+        - apply:
+            file: 10-create-instance.yaml
+        - assert:
+            file: 10-assert.yaml
+
+    - name: instance-ready
+      try:
+        - script:
+            content: |
+              set -e
+              kubectl -n $NAMESPACE create secret generic cass-core-superuser \
+                --from-literal=username=cass-core-superuser --from-literal=password=s3cr3t
+              kubectl -n $NAMESPACE patch k8ssandracluster/cass-core --subresource status --type merge \
+                -p '{"status":{"conditions":[{"type":"CassandraInitialized","status":"True"}],"datacenters":{"dc1-32dfcac1":{}}}}'
+              # The provider ignores status-only K8ssandraCluster updates, so touch the Instance to reconcile it.
+              kubectl -n $NAMESPACE annotate instance/cass-core test.openeverest.io/resync="$(date +%s)" --overwrite
+        - assert:
+            file: 11-assert.yaml
+
+    - name: scale-and-resize
+      try:
+        - patch:
+            file: 20-scale-and-resize.yaml
+        - assert:
+            file: 20-assert.yaml
+
+    - name: upgrade-version
+      try:
+        - patch:
+            file: 21-upgrade-version.yaml
+        - assert:
+            file: 21-assert.yaml
+
+    - name: delete-instance
+      try:
+        - delete:
+            ref:
+              apiVersion: core.openeverest.io/v1alpha1
+              kind: Instance
+              name: cass-core
+        - error:
+            file: 30-errors.yaml

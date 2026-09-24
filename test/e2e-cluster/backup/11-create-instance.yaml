@@ -1,0 +1,30 @@
+# No spec.version: the Instance gets the provider's default version bundle.
+apiVersion: core.openeverest.io/v1alpha1
+kind: Instance
+metadata:
+  name: cass-backup
+spec:
+  providerRef:
+    name: provider-cassandra
+  backup:
+    enabled: true
+    classRef:
+      name: medusa
+    storages:
+      - storageRef:
+          name: minio-storage
+  components:
+    engine:
+      type: cassandra
+      replicas: 1
+      resources:
+        requests:
+          cpu: 500m
+          memory: 2Gi
+        limits:
+          memory: 2Gi
+      storage:
+        size: 2Gi
+      parameters:
+        heapInitialSize: 1Gi
+        heapMaxSize: 1Gi

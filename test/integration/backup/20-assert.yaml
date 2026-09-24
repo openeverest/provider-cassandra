@@ -1,0 +1,18 @@
+apiVersion: medusa.k8ssandra.io/v1alpha1
+kind: MedusaBackupJob
+metadata:
+  name: cass-backup-manual
+  ownerReferences:
+    - apiVersion: backup.openeverest.io/v1alpha1
+      kind: Backup
+      name: cass-backup-manual
+      controller: true
+spec:
+  cassandraDatacenter: dc1-922e1d38
+---
+apiVersion: backup.openeverest.io/v1alpha1
+kind: Backup
+metadata:
+  name: cass-backup-manual
+status:
+  state: Pending

@@ -1,0 +1,25 @@
+apiVersion: core.openeverest.io/v1alpha1
+kind: Instance
+metadata:
+  name: cass-backup
+spec:
+  providerRef:
+    name: provider-cassandra
+  backup:
+    enabled: true
+    classRef:
+      name: medusa
+    storages:
+      - storageRef:
+          name: s3-storage
+        schedules:
+          - name: hourly
+            enabled: true
+            cron: "0 * * * *"
+            retentionCopies: 3
+  components:
+    engine:
+      type: cassandra
+      replicas: 1
+      storage:
+        size: 1Gi

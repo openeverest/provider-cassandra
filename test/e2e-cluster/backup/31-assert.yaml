@@ -1,0 +1,22 @@
+# Medusa restores by restarting every node; wait for the cluster to be back.
+apiVersion: cassandra.datastax.com/v1beta1
+kind: CassandraDatacenter
+metadata:
+  name: dc1-922e1d38
+status:
+  cassandraOperatorProgress: Ready
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: cass-backup-dc1-922e1d38-default-sts
+status:
+  readyReplicas: 1
+  (currentRevision == updateRevision): true
+---
+apiVersion: core.openeverest.io/v1alpha1
+kind: Instance
+metadata:
+  name: cass-backup
+status:
+  phase: Ready

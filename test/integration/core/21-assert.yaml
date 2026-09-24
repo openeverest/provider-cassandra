@@ -1,0 +1,12 @@
+apiVersion: k8ssandra.io/v1alpha1
+kind: K8ssandraCluster
+metadata:
+  name: cass-core
+spec:
+  cassandra:
+    serverVersion: 5.0.4
+    serverImage: k8ssandra/cass-management-api:5.0.4-ubi
+    datacenters:
+      - metadata:
+          name: dc1-32dfcac1
+        size: 5

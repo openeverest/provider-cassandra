@@ -1,0 +1,18 @@
+# The provider must be deployed and ready, and its chart must have installed
+# the Medusa BackupClass.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: provider-cassandra
+  namespace: provider-system
+status:
+  readyReplicas: 1
+---
+apiVersion: backup.openeverest.io/v1alpha1
+kind: BackupClass
+metadata:
+  name: medusa
+spec:
+  executionMode: ProviderManaged
+  supportedProviders:
+    - provider-cassandra

@@ -1,0 +1,17 @@
+# cass-operator names the StatefulSet "<cluster>-<datacenter>-<rack>-sts".
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: cass-lifecycle-dc1-0b60c5c2-default-sts
+spec:
+  replicas: 2
+status:
+  readyReplicas: 2
+---
+apiVersion: cassandra.datastax.com/v1beta1
+kind: CassandraDatacenter
+metadata:
+  name: dc1-0b60c5c2
+status:
+  cassandraOperatorProgress: Ready
+  (length(nodeStatuses)): 2

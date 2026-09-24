@@ -1,0 +1,11 @@
+# Any scheduled run, mirrored as a Backup, that completed. Its name is
+# "sched-<hash>-<unix-timestamp>", so it is matched by content, not name.
+apiVersion: backup.openeverest.io/v1alpha1
+kind: Backup
+spec:
+  origin:
+    instanceRef:
+      name: cass-backup
+  scheduleName: every-minute
+status:
+  state: Succeeded

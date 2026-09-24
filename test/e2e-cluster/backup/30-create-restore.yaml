@@ -1,0 +1,12 @@
+apiVersion: backup.openeverest.io/v1alpha1
+kind: Restore
+metadata:
+  name: cass-backup-restore
+spec:
+  instanceRef:
+    name: cass-backup
+  dataSource:
+    type: Backup
+    backup:
+      backupRef:
+        name: cass-backup-manual

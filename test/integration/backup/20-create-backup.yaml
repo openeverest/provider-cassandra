@@ -1,0 +1,13 @@
+apiVersion: backup.openeverest.io/v1alpha1
+kind: Backup
+metadata:
+  name: cass-backup-manual
+spec:
+  origin:
+    type: Instance
+    instanceRef:
+      name: cass-backup
+  classRef:
+    name: medusa
+  storageRef:
+    name: s3-storage

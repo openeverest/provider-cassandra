@@ -1,0 +1,7 @@
+# Simulates a run of the "hourly" schedule, created by k8ssandra-operator.
+apiVersion: medusa.k8ssandra.io/v1alpha1
+kind: MedusaBackupJob
+metadata:
+  name: sched-0281f9dd-1767225600
+spec:
+  cassandraDatacenter: dc1-922e1d38

@@ -1,0 +1,97 @@
+---
+# Backup suite. Like the core suite it runs without the k8ssandra-operator:
+# it checks the Medusa resources the provider creates and simulates Medusa by
+# patching their statuses. Real backups and restores are covered by
+# test/e2e-cluster/backup.
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: backup
+spec:
+  description: |
+    Enable Medusa backups with a schedule, take an on-demand backup, mirror a
+    scheduled run, restore, then remove the schedule and delete the Instance.
+
+  catch:
+    - script:
+        content: kubectl -n $NAMESPACE get instance,k8ssandracluster,backup,restore,medusabackupjob,medusarestorejob,medusabackupschedule -o yaml
+    - podLogs:
+        namespace: provider-system
+        selector: app.kubernetes.io/name=provider-cassandra
+        tail: 100
+
+  steps:
+    - name: provider-deployed
+      try:
+        - assert:
+            file: 00-assert.yaml
+
+    - name: setup-storage
+      try:
+        - apply:
+            file: 10-setup-storage.yaml
+
+    - name: create-instance
+      try:
+        - apply:
+            file: 11-create-instance.yaml
+        - assert:
+            file: 11-assert.yaml
+
+    - name: on-demand-backup
+      try:
+        - apply:
+            file: 20-create-backup.yaml
+        - assert:
+            file: 20-assert.yaml
+        - script:
+            content: |
+              kubectl -n $NAMESPACE patch medusabackupjob/cass-backup-manual --subresource status --type merge \
+                -p '{"status":{"startTime":"2026-01-01T00:00:00Z","finishTime":"2026-01-01T00:05:00Z","finished":["pod-0"]}}'
+        - assert:
+            file: 21-assert.yaml
+
+    # k8ssandra-operator's scheduler names each run "<schedule>-<unix-timestamp>"
+    # and sets no owner; the provider must mirror it as a Backup and adopt it.
+    - name: scheduled-backup
+      try:
+        - apply:
+            file: 30-scheduled-run.yaml
+        - assert:
+            file: 30-assert.yaml
+        - script:
+            content: |
+              kubectl -n $NAMESPACE patch medusabackupjob/sched-0281f9dd-1767225600 --subresource status --type merge \
+                -p '{"status":{"startTime":"2026-01-01T01:00:00Z","finishTime":"2026-01-01T01:05:00Z","finished":["pod-0"]}}'
+        - assert:
+            file: 31-assert.yaml
+
+    - name: restore
+      try:
+        - apply:
+            file: 40-create-restore.yaml
+        - assert:
+            file: 40-assert.yaml
+        - script:
+            content: |
+              kubectl -n $NAMESPACE patch medusarestorejob/cass-backup-restore --subresource status --type merge \
+                -p '{"status":{"restoreKey":"simulated","startTime":"2026-01-01T02:00:00Z","finishTime":"2026-01-01T02:10:00Z","finished":["pod-0"]}}'
+        - assert:
+            file: 41-assert.yaml
+
+    - name: remove-schedule
+      try:
+        - patch:
+            file: 50-remove-schedule.yaml
+        - error:
+            file: 50-errors.yaml
+
+    - name: delete-instance
+      try:
+        - delete:
+            ref:
+              apiVersion: core.openeverest.io/v1alpha1
+              kind: Instance
+              name: cass-backup
+        - error:
+            file: 60-errors.yaml

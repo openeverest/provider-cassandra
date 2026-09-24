@@ -1,0 +1,16 @@
+apiVersion: k8ssandra.io/v1alpha1
+kind: K8ssandraCluster
+metadata:
+  name: cass-backup
+---
+# The default Cascade deletion policy removes the Instance's Backups, and with
+# them their MedusaBackupJobs.
+apiVersion: backup.openeverest.io/v1alpha1
+kind: Backup
+metadata:
+  name: cass-backup-manual
+---
+apiVersion: medusa.k8ssandra.io/v1alpha1
+kind: MedusaBackupJob
+metadata:
+  name: cass-backup-manual

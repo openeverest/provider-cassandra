@@ -1,0 +1,19 @@
+apiVersion: core.openeverest.io/v1alpha1
+kind: Instance
+metadata:
+  name: cass-backup
+status:
+  phase: Ready
+---
+apiVersion: k8ssandra.io/v1alpha1
+kind: K8ssandraCluster
+metadata:
+  name: cass-backup
+spec:
+  cassandra:
+    serverVersion: 5.0.4
+  medusa:
+    storageProperties:
+      storageProvider: s3_compatible
+      host: minio.minio.svc.cluster.local
+      port: 9000

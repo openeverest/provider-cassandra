@@ -1,0 +1,21 @@
+---
+# Chainsaw configuration shared by the e2e-cluster suites, which run real
+# Cassandra pods and therefore need much longer timeouts than integration tests.
+apiVersion: chainsaw.kyverno.io/v1alpha2
+kind: Configuration
+metadata:
+  name: e2e-cluster
+spec:
+  timeouts:
+    apply: 60s
+    assert: 10m
+    delete: 5m
+    error: 5m
+    exec: 5m
+    cleanup: 5m
+  cleanup:
+    skipDelete: false
+  report:
+    format: XML
+    name: chainsaw-report
+    path: /tmp

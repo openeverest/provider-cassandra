@@ -1,0 +1,56 @@
+# Medusa builds its S3 URL from host, port and secure, and reads credentials
+# from an AWS credentials file, so the provider splits the endpoint URL and
+# derives a "<instance>-medusa-storage" Secret from the BackupStorage Secret.
+apiVersion: k8ssandra.io/v1alpha1
+kind: K8ssandraCluster
+metadata:
+  name: cass-backup
+spec:
+  medusa:
+    storageProperties:
+      storageProvider: s3_compatible
+      bucketName: cassandra-backups
+      region: us-east-1
+      host: s3.example.com
+      port: 9000
+      secure: true
+      prefix: cass-backup
+      maxBackupCount: 3
+      storageSecretRef:
+        name: cass-backup-medusa-storage
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: cass-backup-medusa-storage
+data:
+  (base64_decode(credentials)): |
+    [default]
+    aws_access_key_id = access
+    aws_secret_access_key = secret
+---
+# Schedule names are "sched-" plus a hash of the Instance and schedule names.
+apiVersion: medusa.k8ssandra.io/v1alpha1
+kind: MedusaBackupSchedule
+metadata:
+  name: sched-0281f9dd
+  labels:
+    app.kubernetes.io/instance: cass-backup
+    backup.provider-cassandra.openeverest.io/schedule: hourly
+    backup.provider-cassandra.openeverest.io/storage: s3-storage
+    backup.provider-cassandra.openeverest.io/class: medusa
+spec:
+  cronSchedule: "0 * * * *"
+  operationType: backup
+  backupSpec:
+    cassandraDatacenter: dc1-922e1d38
+---
+apiVersion: medusa.k8ssandra.io/v1alpha1
+kind: MedusaBackupSchedule
+metadata:
+  name: dc1-922e1d38-purge
+spec:
+  cronSchedule: "0 3 * * *"
+  operationType: purge
+  backupSpec:
+    cassandraDatacenter: dc1-922e1d38

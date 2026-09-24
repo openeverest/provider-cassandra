@@ -1,0 +1,14 @@
+apiVersion: core.openeverest.io/v1alpha1
+kind: Instance
+metadata:
+  name: cass-backup
+spec:
+  backup:
+    storages:
+      - storageRef:
+          name: minio-storage
+        schedules:
+          - name: every-minute
+            enabled: true
+            cron: "* * * * *"
+            retentionCopies: 2
