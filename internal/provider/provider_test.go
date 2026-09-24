@@ -29,6 +29,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/event"
 
 	backupv1alpha1 "github.com/openeverest/openeverest/v2/api/backup/v1alpha1"
 	corev1alpha1 "github.com/openeverest/openeverest/v2/api/core/v1alpha1"
@@ -161,6 +162,44 @@ func TestCassandraInitialized(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			assert.Equal(t, tc.want, cassandraInitialized(tc.cluster))
+		})
+	}
+}
+
+func TestClusterHealthChanged(t *testing.T) {
+	t.Parallel()
+
+	provisioning := k8ssandraapi.K8ssandraClusterStatus{
+		Datacenters: map[string]k8ssandraapi.K8ssandraStatus{"dc1": {}},
+	}
+	initialized := k8ssandraapi.K8ssandraClusterStatus{
+		Datacenters: map[string]k8ssandraapi.K8ssandraStatus{"dc1": {}},
+		Conditions: []k8ssandraapi.K8ssandraClusterCondition{{
+			Type:   k8ssandraapi.K8ssandraClusterConditionType(k8ssandraapi.CassandraInitialized),
+			Status: corev1.ConditionTrue,
+		}},
+	}
+	failed := provisioning
+	failed.Error = "datacenter failed"
+
+	tests := map[string]struct {
+		old, new k8ssandraapi.K8ssandraClusterStatus
+		want     bool
+	}{
+		"cluster becomes initialized": {old: provisioning, new: initialized, want: true},
+		"operator reports an error":   {old: provisioning, new: failed, want: true},
+		"error clears":                {old: failed, new: provisioning, want: true},
+		"unrelated status churn":      {old: initialized, new: initialized, want: false},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			got := clusterHealthChanged.Update(event.UpdateEvent{
+				ObjectOld: &k8ssandraapi.K8ssandraCluster{Status: tc.old},
+				ObjectNew: &k8ssandraapi.K8ssandraCluster{Status: tc.new},
+			})
+			assert.Equal(t, tc.want, got)
 		})
 	}
 }

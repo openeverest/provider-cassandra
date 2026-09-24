@@ -43,8 +43,6 @@ spec:
                 --from-literal=username=cass-core-superuser --from-literal=password=s3cr3t
               kubectl -n $NAMESPACE patch k8ssandracluster/cass-core --subresource status --type merge \
                 -p '{"status":{"conditions":[{"type":"CassandraInitialized","status":"True"}],"datacenters":{"dc1-32dfcac1":{}}}}'
-              # The provider ignores status-only K8ssandraCluster updates, so touch the Instance to reconcile it.
-              kubectl -n $NAMESPACE annotate instance/cass-core test.openeverest.io/resync="$(date +%s)" --overwrite
         - assert:
             file: 11-assert.yaml
 
