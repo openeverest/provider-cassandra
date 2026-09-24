@@ -1,21 +1,39 @@
-# Expected outcome of the create-instance step.
-#
-# Assert both the accepted Instance spec and the operator-native CR the
-# provider must create from it. Chainsaw asserts are partial: only the
-# fields listed here are checked.
+# The datacenter name is "dc1-" plus the FNV-32a hash of the Instance name
+# (resolveDatacenterName); it must never change for a live cluster.
+apiVersion: k8ssandra.io/v1alpha1
+kind: K8ssandraCluster
+metadata:
+  name: cass-core
+spec:
+  cassandra:
+    serverType: cassandra
+    serverVersion: 4.1.9
+    serverImage: k8ssandra/cass-management-api:4.1.9-ubi
+    resources:
+      requests:
+        cpu: 500m
+        memory: 2Gi
+      limits:
+        memory: 2Gi
+    storageConfig:
+      cassandraDataVolumeClaimSpec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 1Gi
+    config:
+      jvmOptions:
+        heap_initial_size: 512Mi
+        heap_max_size: 1Gi
+    datacenters:
+      - metadata:
+          name: dc1-32dfcac1
+        size: 3
+---
 apiVersion: core.openeverest.io/v1alpha1
 kind: Instance
 metadata:
-  name: test-instance
-spec:
-  providerRef:
-    name: provider-cassandra
-# TODO: assert the operator-native CR produced by Sync(), e.g.:
-# ---
-# apiVersion: <operator-api-group>/v1
-# kind: <OperatorKind>
-# metadata:
-#   name: test-instance
-# spec:
-#   replicas: 1
-#   ...
+  name: cass-core
+status:
+  phase: Provisioning

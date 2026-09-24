@@ -1,28 +1,21 @@
 ---
-# Core lifecycle suite — skeleton.
-#
-# Ships with a single step that verifies the provider deployment is running.
-# The commented-out steps below show the recommended lifecycle test pattern;
-# enable and adapt them once your provider implements Sync/Status.
-#
-# For a complete example, see:
-# https://github.com/openeverest/provider-percona-server-mongodb/tree/main/test/integration/core
+# Core lifecycle suite. The bundled k8ssandra-operator is not deployed (see the
+# deploy-provider-ci Make target), so this suite checks how the provider maps an
+# Instance onto a K8ssandraCluster and back, simulating the operator by patching
+# CR statuses. Real Cassandra pods are covered by test/e2e-cluster/.
 apiVersion: chainsaw.kyverno.io/v1alpha1
 kind: Test
 metadata:
   name: core
 spec:
   description: |
-    Lifecycle of an Instance: create, simulate operator readiness, update,
-    and delete.
+    Create an Instance and check the generated K8ssandraCluster, simulate the
+    cluster becoming ready and check the connection details, scale, resize and
+    upgrade it, then delete it.
 
-  # Collect diagnostics when a step fails.
   catch:
     - script:
-        content: kubectl -n $NAMESPACE get instance -o yaml
-    # TODO: also dump your operator-native CR, e.g.:
-    # - script:
-    #     content: kubectl -n $NAMESPACE get <operator-resource> -o yaml
+        content: kubectl -n $NAMESPACE get instance,k8ssandracluster -o yaml
     - podLogs:
         namespace: provider-system
         selector: app.kubernetes.io/name=provider-cassandra
@@ -34,43 +27,45 @@ spec:
         - assert:
             file: 00-assert.yaml
 
-    # TODO: enable once your provider implements Sync().
-    # Applies an Instance and asserts the provider creates the
-    # operator-native CR with the expected spec.
-    # - name: create-instance
-    #   try:
-    #     - apply:
-    #         file: 10-create-instance.yaml
-    #     - assert:
-    #         file: 10-assert.yaml
+    - name: create-instance
+      try:
+        - apply:
+            file: 10-create-instance.yaml
+        - assert:
+            file: 10-assert.yaml
 
-    # TODO: enable once your provider implements Status().
-    # The operator is scaled to 0 in integration tests, so simulate it
-    # marking the cluster ready by patching the operator-native CR status,
-    # then assert the Instance reports phase Running.
-    # - name: instance-ready
-    #   try:
-    #     - script:
-    #         content: |
-    #           kubectl patch <operator-resource>/test-instance --subresource status -n $NAMESPACE \
-    #             -p '{"status":{"state":"ready"}}' --type=merge
-    #     - assert:
-    #         file: 11-assert.yaml
+    - name: instance-ready
+      try:
+        - script:
+            content: |
+              set -e
+              kubectl -n $NAMESPACE create secret generic cass-core-superuser \
+                --from-literal=username=cass-core-superuser --from-literal=password=s3cr3t
+              kubectl -n $NAMESPACE patch k8ssandracluster/cass-core --subresource status --type merge \
+                -p '{"status":{"conditions":[{"type":"CassandraInitialized","status":"True"}],"datacenters":{"dc1-32dfcac1":{}}}}'
+        - assert:
+            file: 11-assert.yaml
 
-    # TODO: enable once your provider implements Cleanup().
-    # Deletes the Instance and waits for the provider to tear everything
-    # down. With the operator scaled to 0, you may need to clear finalizers
-    # on the operator-native CR (nothing processes them):
-    # - name: delete-instance
-    #   try:
-    #     - script:
-    #         content: |
-    #           kubectl -n $NAMESPACE delete instance/test-instance --wait=false
-    #           kubectl -n $NAMESPACE patch <operator-resource>/test-instance \
-    #             -p '{"metadata":{"finalizers":null}}' --type merge
-    #     - wait:
-    #         apiVersion: core.openeverest.io/v1alpha1
-    #         kind: Instance
-    #         name: test-instance
-    #         for:
-    #           deletion: {}
+    - name: scale-and-resize
+      try:
+        - patch:
+            file: 20-scale-and-resize.yaml
+        - assert:
+            file: 20-assert.yaml
+
+    - name: upgrade-version
+      try:
+        - patch:
+            file: 21-upgrade-version.yaml
+        - assert:
+            file: 21-assert.yaml
+
+    - name: delete-instance
+      try:
+        - delete:
+            ref:
+              apiVersion: core.openeverest.io/v1alpha1
+              kind: Instance
+              name: cass-core
+        - error:
+            file: 30-errors.yaml

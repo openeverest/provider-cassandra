@@ -1,0 +1,22 @@
+apiVersion: k8ssandra.io/v1alpha1
+kind: K8ssandraCluster
+metadata:
+  name: cass-core
+spec:
+  cassandra:
+    serverVersion: 4.1.9
+    resources:
+      requests:
+        cpu: "1"
+        memory: 4Gi
+      limits:
+        memory: 4Gi
+    storageConfig:
+      cassandraDataVolumeClaimSpec:
+        resources:
+          requests:
+            storage: 2Gi
+    datacenters:
+      - metadata:
+          name: dc1-32dfcac1
+        size: 5

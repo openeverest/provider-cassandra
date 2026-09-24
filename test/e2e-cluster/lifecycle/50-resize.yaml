@@ -1,0 +1,12 @@
+apiVersion: core.openeverest.io/v1alpha1
+kind: Instance
+metadata:
+  name: cass-lifecycle
+spec:
+  components:
+    engine:
+      resources:
+        requests:
+          memory: 2Gi
+        limits:
+          memory: 2Gi

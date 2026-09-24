@@ -1,0 +1,24 @@
+apiVersion: backup.openeverest.io/v1alpha1
+kind: Backup
+metadata:
+  name: sched-0281f9dd-1767225600
+spec:
+  origin:
+    type: Instance
+    instanceRef:
+      name: cass-backup
+  classRef:
+    name: medusa
+  storageRef:
+    name: s3-storage
+  scheduleName: hourly
+---
+apiVersion: medusa.k8ssandra.io/v1alpha1
+kind: MedusaBackupJob
+metadata:
+  name: sched-0281f9dd-1767225600
+  ownerReferences:
+    - apiVersion: backup.openeverest.io/v1alpha1
+      kind: Backup
+      name: sched-0281f9dd-1767225600
+      controller: true

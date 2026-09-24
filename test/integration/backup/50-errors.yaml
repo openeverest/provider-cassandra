@@ -1,0 +1,10 @@
+apiVersion: medusa.k8ssandra.io/v1alpha1
+kind: MedusaBackupSchedule
+metadata:
+  name: sched-0281f9dd
+---
+# With no schedule requesting retention, the purge schedule goes away too.
+apiVersion: medusa.k8ssandra.io/v1alpha1
+kind: MedusaBackupSchedule
+metadata:
+  name: dc1-922e1d38-purge

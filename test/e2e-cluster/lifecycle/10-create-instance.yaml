@@ -1,25 +1,24 @@
+# Sized so four nodes (during scale-out) fit a GitHub-hosted runner.
 apiVersion: core.openeverest.io/v1alpha1
 kind: Instance
 metadata:
-  name: cass-core
+  name: cass-lifecycle
 spec:
   providerRef:
     name: provider-cassandra
   version: "4.1"
-  topology:
-    type: singleDatacenter
   components:
     engine:
       type: cassandra
       replicas: 3
       resources:
         requests:
-          cpu: 500m
-          memory: 2Gi
+          cpu: 250m
+          memory: 1536Mi
         limits:
-          memory: 2Gi
+          memory: 1536Mi
       storage:
-        size: 1Gi
+        size: 2Gi
       parameters:
-        heapInitialSize: 512Mi
-        heapMaxSize: 1Gi
+        heapInitialSize: 768Mi
+        heapMaxSize: 768Mi

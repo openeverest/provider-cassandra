@@ -322,7 +322,9 @@ func TestMirror(t *testing.T) {
 		require.NoError(t, err)
 		if assert.NotNil(t, got) {
 			assert.Equal(t, job.Name, got.Name)
-			assert.Equal(t, instance.Name, got.Spec.InstanceRef.Name)
+			assert.Equal(t, backupv1alpha1.BackupOriginTypeInstance, got.Spec.Origin.Type)
+			require.NotNil(t, got.Spec.Origin.InstanceRef)
+			assert.Equal(t, instance.Name, got.Spec.Origin.InstanceRef.Name)
 			assert.Equal(t, "medusa", got.Spec.ClassRef.Name)
 			assert.Equal(t, "my-storage", got.Spec.StorageRef.Name)
 			assert.Equal(t, "daily", got.Spec.ScheduleName)

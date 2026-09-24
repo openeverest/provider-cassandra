@@ -103,3 +103,32 @@ jobs:
       make_target: test-integration-core
       suite: core
     secrets: inherit
+
+  test-integration-backup:
+    name: Integration / backup
+    needs: [lint, build, verify]
+    uses: ./.github/workflows/integration-test.yaml
+    with:
+      make_target: test-integration-backup
+      suite: backup
+    secrets: inherit
+
+  # E2E cluster suites run real Cassandra pods through the bundled
+  # k8ssandra-operator (see e2e-cluster-test.yaml), one suite per job.
+  test-e2e-cluster-lifecycle:
+    name: E2E cluster / lifecycle
+    needs: [lint, build, verify]
+    uses: ./.github/workflows/e2e-cluster-test.yaml
+    with:
+      make_target: test-e2e-cluster-lifecycle
+      suite: lifecycle
+    secrets: inherit
+
+  test-e2e-cluster-backup:
+    name: E2E cluster / backup
+    needs: [lint, build, verify]
+    uses: ./.github/workflows/e2e-cluster-test.yaml
+    with:
+      make_target: test-e2e-cluster-backup
+      suite: backup
+    secrets: inherit

@@ -14,7 +14,9 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/utils/ptr"
+	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	corev1alpha1 "github.com/openeverest/openeverest/v2/api/core/v1alpha1"
 	"github.com/openeverest/openeverest/v2/provider-runtime/controller"
@@ -103,11 +105,29 @@ func New() *Provider {
 			// modified" conflicts on the operator side) and the operator can never
 			// win the race to persist CassandraInitialized=true, so the Instance
 			// never leaves Provisioning even once Cassandra is actually healthy.
+			// The status transitions Status() reports on are let through
+			// separately (clusterHealthChanged), since the runtime does not
+			// requeue an Instance that is still Provisioning.
 			WatchConfigs: []controller.WatchConfig{
-				controller.WatchOwned(&k8ssandraapi.K8ssandraCluster{}, controller.GenerationChangedPredicate),
+				controller.WatchOwned(&k8ssandraapi.K8ssandraCluster{},
+					predicate.Or(controller.GenerationChangedPredicate, clusterHealthChanged)),
 			},
 		},
 	}
+}
+
+// clusterHealthChanged passes K8ssandraCluster updates that change what
+// Status() reports: the CassandraInitialized condition or the error field.
+var clusterHealthChanged = predicate.Funcs{
+	UpdateFunc: func(e event.UpdateEvent) bool {
+		oldKC, okOld := e.ObjectOld.(*k8ssandraapi.K8ssandraCluster)
+		newKC, okNew := e.ObjectNew.(*k8ssandraapi.K8ssandraCluster)
+		if !okOld || !okNew {
+			return false
+		}
+		return cassandraInitialized(oldKC) != cassandraInitialized(newKC) ||
+			oldKC.Status.Error != newKC.Status.Error
+	},
 }
 
 // Validate checks if the Instance spec is valid for a Cassandra deployment.

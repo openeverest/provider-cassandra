@@ -37,6 +37,9 @@ GOLANGCI_LINT ?= $(LOCALBIN)/golangci-lint-$(GOLANGCI_LINT_VERSION)
 # Helm chart directory
 CHART_DIR ?= charts/provider-cassandra
 
+# Scratch directory the bundled operator chart is unpacked into to install its CRDs.
+OPERATOR_CHART_DIR ?= $(LOCALBIN)/operator-chart
+
 .PHONY: help
 help: ## Display this help.
 	@awk 'BEGIN {FS = ":.*##"; printf "\nUsage:\n  make \033[36m<target>\033[0m\n"} /^[a-zA-Z_0-9-]+:.*?##/ { printf "  \033[36m%-20s\033[0m %s\n", $$1, $$2 } /^##@/ { printf "\n\033[1m%s\033[0m\n", substr($$0, 5) } ' $(MAKEFILE_LIST)
@@ -112,8 +115,10 @@ docker-push: ## Push docker image.
 
 ##@ Helm
 
+# Once Chart.lock exists, `helm dependency build` only resolves repositories added by name.
 .PHONY: helm-deps
 helm-deps: ## Download/update Helm chart dependencies.
+	helm repo add k8ssandra https://helm.k8ssandra.io/stable --force-update
 	helm dependency build $(CHART_DIR)
 
 .PHONY: helm-install
@@ -146,6 +151,25 @@ test-integration: ## Run all integration tests against the current cluster.
 test-integration-core: ## Run core integration tests.
 	. ./test/vars.sh && chainsaw test --config ./test/integration/.chainsaw.yaml ./test/integration/core
 
+.PHONY: test-integration-backup
+test-integration-backup: ## Run backup integration tests.
+	. ./test/vars.sh && chainsaw test --config ./test/integration/.chainsaw.yaml ./test/integration/backup
+
+# E2E cluster tests run against a real k8ssandra-operator and real Cassandra
+# pods (see deploy-provider-e2e), so they are much slower than integration tests.
+
+.PHONY: test-e2e-cluster
+test-e2e-cluster: ## Run all e2e-cluster tests (requires a running k8ssandra-operator).
+	. ./test/vars.sh && chainsaw test --config ./test/e2e-cluster/.chainsaw.yaml ./test/e2e-cluster
+
+.PHONY: test-e2e-cluster-lifecycle
+test-e2e-cluster-lifecycle: ## Run the instance lifecycle e2e-cluster test.
+	. ./test/vars.sh && chainsaw test --config ./test/e2e-cluster/.chainsaw.yaml ./test/e2e-cluster/lifecycle
+
+.PHONY: test-e2e-cluster-backup
+test-e2e-cluster-backup: ## Run the backup/restore e2e-cluster test.
+	. ./test/vars.sh && chainsaw test --config ./test/e2e-cluster/.chainsaw.yaml ./test/e2e-cluster/backup
+
 .PHONY: load-image
 load-image: ## Import the provider image (IMG) into the k3d cluster.
 	k3d image import ${IMG} -c ${K3D_CLUSTER_NAME}
@@ -155,7 +179,7 @@ load-openeverest-controller-image: ## Import the OpenEverest controller image in
 	k3d image import ${OPENEVEREST_CONTROLLER_IMG} -c ${K3D_CLUSTER_NAME}
 
 .PHONY: install-crds
-install-crds: ## Install OpenEverest CRDs (and your operator's CRDs) into the cluster.
+install-crds: helm-deps ## Install OpenEverest CRDs and the k8ssandra-operator CRDs (from the pinned chart dependency) into the cluster.
 	kubectl apply -f https://raw.githubusercontent.com/openeverest/openeverest/$(OPENEVEREST_BRANCH)/config/crd/bases/core.openeverest.io_providers.yaml
 	kubectl apply -f https://raw.githubusercontent.com/openeverest/openeverest/$(OPENEVEREST_BRANCH)/config/crd/bases/core.openeverest.io_instances.yaml
 	kubectl apply -f https://raw.githubusercontent.com/openeverest/openeverest/$(OPENEVEREST_BRANCH)/config/crd/bases/core.openeverest.io_instancepresets.yaml
@@ -164,8 +188,9 @@ install-crds: ## Install OpenEverest CRDs (and your operator's CRDs) into the cl
 	kubectl apply -f https://raw.githubusercontent.com/openeverest/openeverest/$(OPENEVEREST_BRANCH)/config/crd/bases/backup.openeverest.io_backups.yaml
 	kubectl apply -f https://raw.githubusercontent.com/openeverest/openeverest/$(OPENEVEREST_BRANCH)/config/crd/bases/backup.openeverest.io_restores.yaml
 	kubectl apply -f https://raw.githubusercontent.com/openeverest/openeverest/$(OPENEVEREST_BRANCH)/config/crd/bases/backup.openeverest.io_backupstorages.yaml
-	# TODO: install your operator's CRDs, e.g.:
-	# curl -fsSL https://raw.githubusercontent.com/<org>/<operator>/v$(OPERATOR_VERSION)/deploy/crd.yaml | kubectl apply --server-side -f -
+	@rm -rf $(OPERATOR_CHART_DIR) && mkdir -p $(OPERATOR_CHART_DIR)
+	tar -xzf $(CHART_DIR)/charts/k8ssandra-operator-*.tgz -C $(OPERATOR_CHART_DIR)
+	find $(OPERATOR_CHART_DIR) -path '*/crds/*.yaml' -exec kubectl apply --server-side -f {} \;
 
 .PHONY: deploy-provider-ci
 deploy-provider-ci: helm-deps ## Deploy the provider via Helm for CI (IMG must already be imported into k3d).
@@ -181,6 +206,16 @@ deploy-provider-ci: helm-deps ## Deploy the provider via Helm for CI (IMG must a
 		--set image.tag=$(_IMG_TAG) \
 		--set image.pullPolicy=Never \
 		--wait --timeout 2m
+
+.PHONY: deploy-provider-e2e
+deploy-provider-e2e: helm-deps ## Deploy the provider with the bundled k8ssandra-operator for e2e-cluster tests (requires cert-manager).
+	helm upgrade --install provider-cassandra $(CHART_DIR) \
+		--create-namespace \
+		--namespace provider-system \
+		--set image.repository=$(_IMG_REPO) \
+		--set image.tag=$(_IMG_TAG) \
+		--set image.pullPolicy=Never \
+		--wait --timeout 5m
 
 ##@ Local Development Cluster
 
