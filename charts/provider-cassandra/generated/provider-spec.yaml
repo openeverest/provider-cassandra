@@ -30,6 +30,8 @@ spec:
               type: string
             heapMaxSize:
               type: string
+            softPodAntiAffinity:
+              type: boolean
           type: object
       type: cassandra
     monitoring:
@@ -71,6 +73,17 @@ spec:
                     min: 0
               groupType: line
               uiType: group
+            softPodAntiAffinity:
+              fieldParams:
+                helperText: For dev and test clusters only. Not recommended for production, as losing one Kubernetes node can take down several database nodes.
+                label: Allow multiple database nodes per Kubernetes node
+                modes:
+                  edit:
+                    disabled: true
+                  restore:
+                    disabled: true
+              path: spec.components.engine.parameters.softPodAntiAffinity
+              uiType: toggle
             storageClass:
               dataSource:
                 provider: storageClasses
@@ -88,6 +101,7 @@ spec:
           componentsOrder:
             - storageClass
             - heapSize
+            - softPodAntiAffinity
           description: Configure advanced settings for your database.
           label: Advanced configuration
         databaseVersion:

@@ -31,3 +31,6 @@ spec:
       # parameters:
       #   heapInitialSize: 1Gi
       #   heapMaxSize: 1Gi
+      #   # Dev/test only: allow several Cassandra pods on one Kubernetes node
+      #   # (e.g. single-node k3d/kind). Not for production; creation-time only.
+      #   softPodAntiAffinity: true
