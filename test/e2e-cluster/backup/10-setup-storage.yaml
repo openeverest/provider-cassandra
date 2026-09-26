@@ -1,25 +1,25 @@
-# Points at the MinIO from dev/resources/minio.yaml, which pre-creates the
+# Points at the SeaweedFS from dev/resources/seaweedfs.yaml, which pre-creates the
 # "backups" bucket.
 apiVersion: v1
 kind: Secret
 metadata:
-  name: minio-credentials
+  name: seaweedfs-credentials
 type: Opaque
 stringData:
-  AWS_ACCESS_KEY_ID: minioadmin
-  AWS_SECRET_ACCESS_KEY: minioadmin
+  AWS_ACCESS_KEY_ID: seaweedfsadmin
+  AWS_SECRET_ACCESS_KEY: seaweedfsadmin
 ---
 apiVersion: backup.openeverest.io/v1alpha1
 kind: BackupStorage
 metadata:
-  name: minio-storage
+  name: seaweedfs-storage
 spec:
   type: s3
   s3:
     bucket: backups
     region: us-east-1
-    endpointURL: http://minio.minio.svc.cluster.local:9000
+    endpointURL: http://seaweedfs.seaweedfs.svc.cluster.local
     forcePathStyle: true
     verifyTLS: false
     credentialsSecretRef:
-      name: minio-credentials
+      name: seaweedfs-credentials

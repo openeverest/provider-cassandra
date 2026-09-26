@@ -5,7 +5,7 @@ metadata:
   name: backup
 spec:
   description: |
-    Back up a real Cassandra cluster to MinIO with Medusa: write a row, take an
+    Back up a real Cassandra cluster to SeaweedFS with Medusa: write a row, take an
     on-demand backup, write another row, restore in place and check only the
     first row is back, then check a scheduled backup runs and is mirrored as a
     Backup.
@@ -28,15 +28,15 @@ spec:
         - script:
             content: kubectl -n provider-system wait --for=condition=available deploy --all --timeout=5m
 
-    - name: deploy-minio
+    - name: deploy-seaweedfs
       try:
         - script:
             content: |
-              kubectl apply -f ${PROVIDER_ROOT_PATH}/dev/resources/minio.yaml
-              kubectl -n minio rollout status deploy/minio --timeout=3m
+              kubectl apply -f ${PROVIDER_ROOT_PATH}/dev/resources/seaweedfs.yaml
+              kubectl -n seaweedfs rollout status deploy/seaweedfs --timeout=3m
       cleanup:
         - script:
-            content: kubectl delete -f ${PROVIDER_ROOT_PATH}/dev/resources/minio.yaml --ignore-not-found
+            content: kubectl delete -f ${PROVIDER_ROOT_PATH}/dev/resources/seaweedfs.yaml --ignore-not-found
 
     - name: setup-storage
       try:

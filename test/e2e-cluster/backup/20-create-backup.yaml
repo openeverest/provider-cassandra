@@ -10,4 +10,4 @@ spec:
   classRef:
     name: medusa
   storageRef:
-    name: minio-storage
+    name: seaweedfs-storage
