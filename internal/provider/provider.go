@@ -144,6 +144,19 @@ func (p *Provider) Validate(c *controller.Context) error {
 		return err
 	}
 
+	// engine.resources left unset gets defaultEngineResources() on a new
+	// cluster, which softPodAntiAffinityResources can always complete; only
+	// explicit resources can be missing CPU or memory entirely.
+	params, err := decodeEngineParameters(engine)
+	if err != nil {
+		return err
+	}
+	if params.SoftPodAntiAffinity && engine.Resources != nil {
+		if _, err := softPodAntiAffinityResources(engine.Resources); err != nil {
+			return err
+		}
+	}
+
 	if topology := c.Instance().Spec.Topology; topology != nil && topology.Type != "" &&
 		topology.Type != common.TopologySingleDatacenter {
 		return fmt.Errorf("unsupported topology %q: this provider only supports %q",
@@ -212,6 +225,20 @@ func (p *Provider) buildCassandra(c *controller.Context) (*k8ssandraapi.Cassandr
 		return nil, err
 	}
 
+	params, err := decodeEngineParameters(engine)
+	if err != nil {
+		return nil, err
+	}
+	softPodAntiAffinity, err := resolveSoftPodAntiAffinity(params.SoftPodAntiAffinity, existing)
+	if err != nil {
+		return nil, err
+	}
+	if softPodAntiAffinity != nil {
+		if resources, err = softPodAntiAffinityResources(resources); err != nil {
+			return nil, err
+		}
+	}
+
 	return &k8ssandraapi.CassandraClusterTemplate{
 		ServerType: k8ssandraapi.ServerDistributionCassandra,
 		DatacenterOptions: k8ssandraapi.DatacenterOptions{
@@ -221,6 +248,12 @@ func (p *Provider) buildCassandra(c *controller.Context) (*k8ssandraapi.Cassandr
 			Resources:       resources,
 			Telemetry:       buildTelemetry(c),
 			CassandraConfig: buildCassandraConfig(jvmOptions),
+			// Set at the cluster level, next to Resources, rather than on
+			// the datacenter: k8ssandra-operator merges it into the
+			// datacenter either way, but its admission webhook rejects a
+			// datacenter-level softPodAntiAffinity unless resources are
+			// also set on that datacenter.
+			SoftPodAntiAffinity: softPodAntiAffinity,
 		},
 		Datacenters: []k8ssandraapi.CassandraDatacenterTemplate{
 			{
@@ -329,11 +362,9 @@ func resolveEngineImage(c *controller.Context, engine corev1alpha1.ComponentSpec
 // leaving k8ssandra-operator's own heap auto-sizing (based on the engine
 // container's memory request/limit) in charge, matching prior behavior.
 func resolveJvmOptions(engine corev1alpha1.ComponentSpec) (k8ssandraapi.JvmOptions, error) {
-	var params components.CassandraParameters
-	if engine.Parameters != nil && engine.Parameters.Raw != nil {
-		if err := json.Unmarshal(engine.Parameters.Raw, &params); err != nil {
-			return k8ssandraapi.JvmOptions{}, fmt.Errorf("decoding %q parameters: %w", common.ComponentEngine, err)
-		}
+	params, err := decodeEngineParameters(engine)
+	if err != nil {
+		return k8ssandraapi.JvmOptions{}, err
 	}
 
 	var jvmOptions k8ssandraapi.JvmOptions
@@ -362,6 +393,79 @@ func resolveJvmOptions(engine corev1alpha1.ComponentSpec) (k8ssandraapi.JvmOptio
 	}
 
 	return jvmOptions, nil
+}
+
+// decodeEngineParameters decodes the engine component's
+// spec.components.engine.parameters payload into components.CassandraParameters.
+// Absent parameters decode to the zero value.
+func decodeEngineParameters(engine corev1alpha1.ComponentSpec) (components.CassandraParameters, error) {
+	var params components.CassandraParameters
+	if engine.Parameters != nil && engine.Parameters.Raw != nil {
+		if err := json.Unmarshal(engine.Parameters.Raw, &params); err != nil {
+			return components.CassandraParameters{}, fmt.Errorf("decoding %q parameters: %w", common.ComponentEngine, err)
+		}
+	}
+	return params, nil
+}
+
+// resolveSoftPodAntiAffinity returns the softPodAntiAffinity value to set on
+// the K8ssandraCluster: ptr.To(true) when enabled, or nil when disabled so
+// the field stays absent and the operator's default (one Cassandra pod per
+// Kubernetes node) applies exactly as before the parameter existed.
+//
+// cass-operator's admission webhook refuses any change to
+// allowMultipleNodesPerWorker (what softPodAntiAffinity maps to) on an
+// existing CassandraDatacenter, so toggling it on an already-live cluster
+// (existing != nil) would make every later Sync fail at the webhook. That
+// change is rejected here instead, with an error that names the parameter.
+func resolveSoftPodAntiAffinity(enabled bool, existing *k8ssandraapi.CassandraClusterTemplate) (*bool, error) {
+	if existing != nil {
+		live := existing.SoftPodAntiAffinity != nil && *existing.SoftPodAntiAffinity
+		if live != enabled {
+			return nil, fmt.Errorf("%q softPodAntiAffinity cannot be changed after the instance is created (currently %t)",
+				common.ComponentEngine, live)
+		}
+	}
+	if !enabled {
+		return nil, nil
+	}
+	return ptr.To(true), nil
+}
+
+// softPodAntiAffinityResources returns a copy of resources completed for use
+// with softPodAntiAffinity. cass-operator's admission webhook rejects a
+// CassandraDatacenter that allows multiple nodes per worker unless CPU and
+// memory both have a request and a limit, while the UI only sets limits and
+// defaultEngineResources() leaves CPU unlimited. So for CPU and memory a
+// missing request is filled from its limit (as Kubernetes itself does) and a
+// missing limit from its request; a resource with neither is an error.
+func softPodAntiAffinityResources(resources *corev1.ResourceRequirements) (*corev1.ResourceRequirements, error) {
+	if resources == nil {
+		return nil, fmt.Errorf("%q softPodAntiAffinity requires cpu and memory resources to be set", common.ComponentEngine)
+	}
+	out := resources.DeepCopy()
+	if out.Requests == nil {
+		out.Requests = corev1.ResourceList{}
+	}
+	if out.Limits == nil {
+		out.Limits = corev1.ResourceList{}
+	}
+	for _, name := range []corev1.ResourceName{corev1.ResourceCPU, corev1.ResourceMemory} {
+		// A zero quantity counts as missing: the webhook checks IsZero.
+		req, hasReq := out.Requests[name]
+		hasReq = hasReq && !req.IsZero()
+		lim, hasLim := out.Limits[name]
+		hasLim = hasLim && !lim.IsZero()
+		switch {
+		case !hasReq && !hasLim:
+			return nil, fmt.Errorf("%q softPodAntiAffinity requires a %s request or limit", common.ComponentEngine, name)
+		case !hasReq:
+			out.Requests[name] = lim.DeepCopy()
+		case !hasLim:
+			out.Limits[name] = req.DeepCopy()
+		}
+	}
+	return out, nil
 }
 
 // buildCassandraConfig wraps jvmOptions in a CassandraConfig, or returns nil

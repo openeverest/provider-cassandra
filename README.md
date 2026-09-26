@@ -190,6 +190,7 @@ The technology-specific knobs worth knowing about:
 | Parameter | Applies to | Purpose |
 |---|---|---|
 | `monitoringConfigName` | `monitoring` | Monitoring configuration to attach the instance to |
+| `softPodAntiAffinity` | `engine` | Dev/test only: allow several Cassandra pods on one Kubernetes node (e.g. a 3-node instance on single-node k3d/kind). Needs CPU and memory resources; can only be set at creation |
 
 ## Development
 

@@ -23,6 +23,18 @@ type CassandraParameters struct {
 	// the heap from the engine container's memory request/limit.
 	// +optional
 	HeapMaxSize string `json:"heapMaxSize,omitempty"`
+
+	// SoftPodAntiAffinity lets more than one Cassandra pod be scheduled on
+	// the same Kubernetes node, so that a multi-replica Instance can become
+	// ready on a single-node dev/test cluster (k3d, kind). Left unset, the
+	// operator's default of one Cassandra pod per node applies. Not for
+	// production: losing one node can then take down several replicas.
+	//
+	// Enabling it requires CPU and memory requests and limits on the engine
+	// container (a missing request is filled from its limit and vice
+	// versa). It can only be chosen when the Instance is created.
+	// +optional
+	SoftPodAntiAffinity bool `json:"softPodAntiAffinity,omitempty"`
 }
 
 // MedusaParameters defines the parameters for medusa components.

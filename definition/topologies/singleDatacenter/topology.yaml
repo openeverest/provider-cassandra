@@ -147,9 +147,21 @@ ui:
                                 badgeToApi: true
                             validation:
                                 min: 0
+                softPodAntiAffinity:
+                    path: spec.components.engine.parameters.softPodAntiAffinity
+                    uiType: toggle
+                    fieldParams:
+                        label: Allow multiple database nodes per Kubernetes node
+                        helperText: For dev and test clusters only. Not recommended for production, as losing one Kubernetes node can take down several database nodes.
+                        modes:
+                            edit:
+                                disabled: true
+                            restore:
+                                disabled: true
             componentsOrder:
                 - storageClass
                 - heapSize
+                - softPodAntiAffinity
     sectionsOrder:
         - databaseVersion
         - resources
