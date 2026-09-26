@@ -15,5 +15,5 @@ spec:
   medusa:
     storageProperties:
       storageProvider: s3_compatible
-      host: minio.minio.svc.cluster.local
-      port: 9000
+      host: seaweedfs.seaweedfs.svc.cluster.local
+      port: 80

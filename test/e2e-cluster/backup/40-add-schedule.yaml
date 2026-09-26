@@ -6,7 +6,7 @@ spec:
   backup:
     storages:
       - storageRef:
-          name: minio-storage
+          name: seaweedfs-storage
         schedules:
           - name: every-minute
             enabled: true

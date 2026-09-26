@@ -12,7 +12,7 @@ spec:
       name: medusa
     storages:
       - storageRef:
-          name: minio-storage
+          name: seaweedfs-storage
   components:
     engine:
       type: cassandra
