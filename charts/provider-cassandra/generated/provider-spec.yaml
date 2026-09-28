@@ -3,21 +3,21 @@
 spec:
   componentTypes:
     cassandra:
+      defaultVersion: 5.0.4
       versions:
         - image: k8ssandra/cass-management-api:4.1.9-ubi
           version: 4.1.9
-        - default: true
-          image: k8ssandra/cass-management-api:5.0.4-ubi
+        - image: k8ssandra/cass-management-api:5.0.4-ubi
           version: 5.0.4
     medusa:
+      defaultVersion: 0.22.3
       versions:
-        - default: true
-          image: k8ssandra/medusa:0.22.3
+        - image: k8ssandra/medusa:0.22.3
           version: 0.22.3
     prometheus:
+      defaultVersion: 2.55.1
       versions:
-        - default: true
-          image: prom/prometheus:v2.55.1
+        - image: prom/prometheus:v2.55.1
           version: 2.55.1
   components:
     backupAgent:
@@ -34,6 +34,9 @@ spec:
       type: cassandra
     monitoring:
       type: prometheus
+  defaultVersion: "5.0"
+  release:
+    version: 0.1.0
   topologies:
     singleDatacenter:
       components:
@@ -187,7 +190,6 @@ spec:
         backupAgent: 0.22.3
         engine: 5.0.4
         monitoring: 2.55.1
-      default: true
       name: "5.0"
     - components:
         backupAgent: 0.22.3
