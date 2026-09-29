@@ -30,7 +30,7 @@ A single datacenter with one rack. See [README.md#capabilities](README.md#capabi
 | Provisioning, horizontal/vertical scaling, storage expansion, version upgrades (4.1, 5.0) | ✅ |
 | Heap sizing (`heapInitialSize`, `heapMaxSize`) | ✅ |
 | Medusa backups: on demand, scheduled, in-place restore, S3-compatible storage only | ✅ |
-| Retention (`retentionCopies`) | ⚠️ applies to the whole cluster (highest value across schedules), not to each schedule |
+| Retention (`retention`) | ⚠️ `count` only (`time` is rejected); applies to the whole cluster (highest value across schedules), not to each schedule |
 | Monitoring | 🚧 only sets `telemetry.prometheus.enabled` |
 | Status | only `CassandraInitialized` is checked, and no per-component status is reported |
 | Integration tests | 🚧 chainsaw skeleton; lifecycle steps are commented out |

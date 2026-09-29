@@ -23,6 +23,7 @@ import (
 	medusaapi "github.com/k8ssandra/k8ssandra-operator/apis/medusa/v1alpha1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	backupv1alpha1 "github.com/openeverest/openeverest/v2/api/backup/v1alpha1"
@@ -53,7 +54,7 @@ const (
 
 	// medusaPurgeCron is the fixed daily cadence for the cluster-wide
 	// retention purge schedule. Core has no concept of a configurable purge
-	// cadence -- only per-schedule RetentionCopies (see maxRetentionCopies,
+	// cadence -- only per-schedule count retention (see maxRetentionCopies,
 	// wired onto Storage.MaxBackupCount in buildMedusa) -- so this is an
 	// internal implementation detail, not user-configurable.
 	medusaPurgeCron = "0 3 * * *"
@@ -79,18 +80,28 @@ func medusaScheduleName(instanceName, scheduleName string) string {
 	return fmt.Sprintf("sched-%08x", h.Sum32())
 }
 
-// maxRetentionCopies returns the largest RetentionCopies among enabled
+// maxRetentionCopies returns the largest count retention among enabled
 // schedules, or 0 ("keep all", Medusa's own default for
-// Storage.MaxBackupCount) when none set a limit.
-func maxRetentionCopies(schedules []corev1alpha1.InstanceBackupSchedule) int32 {
+// Storage.MaxBackupCount) when none set a limit. Time retention is not mapped
+// onto Medusa yet, so it is rejected rather than silently dropped.
+func maxRetentionCopies(schedules []corev1alpha1.InstanceBackupSchedule) (int32, error) {
 	var max int32
 	for i := range schedules {
 		s := &schedules[i]
-		if s.Enabled && s.RetentionCopies > max {
-			max = s.RetentionCopies
+		if s.Retention == nil {
+			continue
+		}
+		if s.Retention.Type != corev1alpha1.BackupScheduleRetentionTypeCount {
+			return 0, &controller.BackupConfigError{
+				Reason:  "RetentionTypeUnsupported",
+				Message: fmt.Sprintf("schedule %q: %s retention is not supported by Medusa, use count", s.Name, s.Retention.Type),
+			}
+		}
+		if count := ptr.Deref(s.Retention.Count, 0); s.Enabled && count > max {
+			max = count
 		}
 	}
-	return max
+	return max, nil
 }
 
 // SyncScheduledBackups reconciles one MedusaBackupSchedule per
@@ -118,7 +129,9 @@ func SyncScheduledBackups(c *controller.Context) error {
 				return err
 			}
 		}
-		retention = maxRetentionCopies(storage.Schedules)
+		if retention, err = maxRetentionCopies(storage.Schedules); err != nil {
+			return err
+		}
 	}
 
 	if err := reconcilePurgeSchedule(c, dcName, retention); err != nil {
