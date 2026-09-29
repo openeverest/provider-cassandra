@@ -470,6 +470,200 @@ func TestBuildCassandraConfig(t *testing.T) {
 	})
 }
 
+// fullResources builds engine resources with the given CPU and memory
+// requests and limits; an empty string leaves that entry out.
+func fullResources(cpuReq, cpuLim, memReq, memLim string) *corev1.ResourceRequirements {
+	r := &corev1.ResourceRequirements{Requests: corev1.ResourceList{}, Limits: corev1.ResourceList{}}
+	set := func(l corev1.ResourceList, name corev1.ResourceName, v string) {
+		if v != "" {
+			l[name] = resource.MustParse(v)
+		}
+	}
+	set(r.Requests, corev1.ResourceCPU, cpuReq)
+	set(r.Limits, corev1.ResourceCPU, cpuLim)
+	set(r.Requests, corev1.ResourceMemory, memReq)
+	set(r.Limits, corev1.ResourceMemory, memLim)
+	return r
+}
+
+func TestSoftPodAntiAffinityResources(t *testing.T) {
+	t.Parallel()
+
+	t.Run("complete requests and limits are kept as-is", func(t *testing.T) {
+		t.Parallel()
+		in := fullResources("1", "2", "4Gi", "8Gi")
+		got, err := softPodAntiAffinityResources(in)
+		if assert.NoError(t, err) {
+			assert.Equal(t, fullResources("1", "2", "4Gi", "8Gi"), got)
+		}
+	})
+
+	// The UI only sets limits, and examples/instance-example.yaml only sets
+	// requests; cass-operator rejects allowMultipleNodesPerWorker unless
+	// both are present for CPU and memory, so the missing half is filled in.
+	t.Run("limits only are mirrored into requests", func(t *testing.T) {
+		t.Parallel()
+		in := fullResources("", "2", "", "4Gi")
+		got, err := softPodAntiAffinityResources(in)
+		if assert.NoError(t, err) {
+			assert.Equal(t, fullResources("2", "2", "4Gi", "4Gi"), got)
+			// The caller's value must not be mutated.
+			assert.Equal(t, fullResources("", "2", "", "4Gi"), in)
+		}
+	})
+
+	t.Run("requests only are mirrored into limits", func(t *testing.T) {
+		t.Parallel()
+		got, err := softPodAntiAffinityResources(fullResources("1", "", "4Gi", ""))
+		if assert.NoError(t, err) {
+			assert.Equal(t, fullResources("1", "1", "4Gi", "4Gi"), got)
+		}
+	})
+
+	t.Run("today's default resources are completed with a CPU limit", func(t *testing.T) {
+		t.Parallel()
+		got, err := softPodAntiAffinityResources(defaultEngineResources())
+		if assert.NoError(t, err) {
+			assert.Equal(t, fullResources(defaultEngineCPURequest, defaultEngineCPURequest, defaultEngineMemory, defaultEngineMemory), got)
+		}
+	})
+
+	t.Run("missing memory is rejected", func(t *testing.T) {
+		t.Parallel()
+		_, err := softPodAntiAffinityResources(fullResources("1", "1", "", ""))
+		if assert.Error(t, err) {
+			assert.Contains(t, err.Error(), "memory")
+		}
+	})
+
+	t.Run("a zero limit counts as missing", func(t *testing.T) {
+		t.Parallel()
+		got, err := softPodAntiAffinityResources(fullResources("1", "0", "4Gi", "4Gi"))
+		if assert.NoError(t, err) {
+			assert.Equal(t, fullResources("1", "1", "4Gi", "4Gi"), got)
+		}
+	})
+
+	t.Run("no resources at all is rejected", func(t *testing.T) {
+		t.Parallel()
+		_, err := softPodAntiAffinityResources(nil)
+		if assert.Error(t, err) {
+			assert.Contains(t, err.Error(), "softPodAntiAffinity requires")
+		}
+	})
+}
+
+func TestResolveSoftPodAntiAffinity(t *testing.T) {
+	t.Parallel()
+
+	softCluster := func(v *bool) *k8ssandraapi.CassandraClusterTemplate {
+		c := clusterWithDatacenterName("dc1")
+		c.SoftPodAntiAffinity = v
+		return c
+	}
+	yes := true
+	no := false
+
+	tests := map[string]struct {
+		enabled  bool
+		existing *k8ssandraapi.CassandraClusterTemplate
+		want     *bool
+		wantErr  string
+	}{
+		// Default behavior must stay byte-for-byte unchanged: the field is
+		// left out of the K8ssandraCluster entirely.
+		"disabled on a new cluster leaves the field unset": {enabled: false, want: nil},
+		"enabled on a new cluster sets it":                 {enabled: true, want: &yes},
+		"disabled on a pre-existing cluster stays unset":   {enabled: false, existing: softCluster(nil), want: nil},
+		"disabled matches an explicit false":               {enabled: false, existing: softCluster(&no), want: nil},
+		"enabled stays enabled":                            {enabled: true, existing: softCluster(&yes), want: &yes},
+		// cass-operator's webhook rejects any change of
+		// allowMultipleNodesPerWorker, which would silently freeze every
+		// later Sync, so the change is refused up front with a clear error.
+		"enabling on a live cluster is rejected": {
+			enabled: true, existing: softCluster(nil), wantErr: "cannot be changed",
+		},
+		"disabling on a live cluster is rejected": {
+			enabled: false, existing: softCluster(&yes), wantErr: "cannot be changed",
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			got, err := resolveSoftPodAntiAffinity(tc.enabled, tc.existing)
+			if tc.wantErr != "" {
+				if assert.Error(t, err) {
+					assert.Contains(t, err.Error(), tc.wantErr)
+				}
+				return
+			}
+			if assert.NoError(t, err) {
+				assert.Equal(t, tc.want, got)
+			}
+		})
+	}
+}
+
+func TestBuildCassandraSoftPodAntiAffinity(t *testing.T) {
+	t.Parallel()
+
+	p := &Provider{}
+	engineFor := func(t *testing.T, soft bool, res *corev1.ResourceRequirements) corev1alpha1.ComponentSpec {
+		engine := engineWithParameters(t, components.CassandraParameters{SoftPodAntiAffinity: soft})
+		engine.Type = common.ComponentTypeCassandra
+		engine.Image = "k8ssandra/cass-management-api:5.0.4-ubi"
+		engine.Resources = res
+		return engine
+	}
+
+	t.Run("default leaves anti-affinity and resources untouched", func(t *testing.T) {
+		t.Parallel()
+		instance := newTestInstance(map[string]corev1alpha1.ComponentSpec{
+			common.ComponentEngine: engineFor(t, false, nil),
+		}, nil)
+		got, err := p.buildCassandra(fakeClientContext(instance))
+		if assert.NoError(t, err) {
+			assert.Nil(t, got.SoftPodAntiAffinity)
+			assert.Equal(t, defaultEngineResources(), got.Resources)
+		}
+	})
+
+	// Set at the cluster level, next to Resources: k8ssandra-operator merges
+	// it into the datacenter, while its webhook would reject a
+	// datacenter-level softPodAntiAffinity without datacenter-level
+	// resources.
+	t.Run("enabled sets cluster-level anti-affinity with complete resources", func(t *testing.T) {
+		t.Parallel()
+		instance := newTestInstance(map[string]corev1alpha1.ComponentSpec{
+			common.ComponentEngine: engineFor(t, true, fullResources("", "1", "", "2Gi")),
+		}, nil)
+		got, err := p.buildCassandra(fakeClientContext(instance))
+		if assert.NoError(t, err) && assert.NotNil(t, got.SoftPodAntiAffinity) {
+			assert.True(t, *got.SoftPodAntiAffinity)
+			assert.Equal(t, fullResources("1", "1", "2Gi", "2Gi"), got.Resources)
+			assert.Nil(t, got.Datacenters[0].SoftPodAntiAffinity)
+		}
+	})
+
+	t.Run("enabling on a live cluster fails the sync", func(t *testing.T) {
+		t.Parallel()
+		instance := newTestInstance(map[string]corev1alpha1.ComponentSpec{
+			common.ComponentEngine: engineFor(t, true, nil),
+		}, nil)
+		live := &k8ssandraapi.K8ssandraCluster{
+			ObjectMeta: metav1.ObjectMeta{Name: instance.Name, Namespace: instance.Namespace},
+			Spec: k8ssandraapi.K8ssandraClusterSpec{
+				Cassandra: clusterWithDatacenterName("dc1"),
+			},
+		}
+		_, err := p.buildCassandra(fakeClientContext(instance, live))
+		if assert.Error(t, err) {
+			assert.Contains(t, err.Error(), "cannot be changed")
+		}
+	})
+}
+
 func TestValidate(t *testing.T) {
 	t.Parallel()
 
@@ -536,6 +730,26 @@ func TestValidate(t *testing.T) {
 				HeapMaxSize:     "1Gi",
 			})),
 			wantErr: "must not exceed",
+		},
+		"softPodAntiAffinity with default resources is accepted": {
+			components: withEngine(engineWithParameters(t, components.CassandraParameters{
+				SoftPodAntiAffinity: true,
+			})),
+		},
+		"softPodAntiAffinity with UI-style limits is accepted": {
+			components: withEngine(func() corev1alpha1.ComponentSpec {
+				e := engineWithParameters(t, components.CassandraParameters{SoftPodAntiAffinity: true})
+				e.Resources = fullResources("", "1", "", "4Gi")
+				return e
+			}()),
+		},
+		"softPodAntiAffinity without memory is rejected": {
+			components: withEngine(func() corev1alpha1.ComponentSpec {
+				e := engineWithParameters(t, components.CassandraParameters{SoftPodAntiAffinity: true})
+				e.Resources = fullResources("1", "", "", "")
+				return e
+			}()),
+			wantErr: "softPodAntiAffinity requires",
 		},
 	}
 
