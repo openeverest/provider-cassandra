@@ -30,7 +30,7 @@ A single datacenter with one rack. See [README.md#capabilities](README.md#capabi
 | Provisioning, horizontal/vertical scaling, storage expansion, version upgrades (4.1, 5.0) | ✅ |
 | Heap sizing (`heapInitialSize`, `heapMaxSize`) | ✅ |
 | Medusa backups: on demand, scheduled, in-place restore, S3-compatible storage only | ✅ |
-| Retention (`retentionCopies`) | ⚠️ applies to the whole cluster (highest value across schedules), not to each schedule |
+| Retention (`retention`) | ⚠️ `count` only (`time` is rejected); applies to the whole cluster (highest value across schedules), not to each schedule |
 | Monitoring | 🚧 only sets `telemetry.prometheus.enabled` |
 | Status | only `CassandraInitialized` is checked, and no per-component status is reported |
 | Integration tests | 🚧 chainsaw skeleton; lifecycle steps are commented out |
@@ -40,7 +40,7 @@ Gaps in the current code:
 - The `medusa` and `prometheus` entries in [definition/versions.yaml](definition/versions.yaml)
   are not applied. The operator runs its own default Medusa image, so the pinned `0.22.3`
   is out of date (operator `1.32.x` ships Medusa `0.29`–`0.30`).
-- The provider ignores these `Instance` fields: `schedulingPolicy`, `service`, `userSecretRef`,
+- The provider ignores these `Instance` fields: `service`, `userSecretRef`,
   `dataSource` and `maintenance`.
 - The Medusa BackupClass description is still a `TODO`
   ([definition/backupclasses/medusa/class.yaml](definition/backupclasses/medusa/class.yaml)).
@@ -59,7 +59,7 @@ Progress: [milestone 0.2](https://github.com/openeverest/provider-cassandra/mile
 | Enable end-to-end integration tests (create → ready → scale → backup → restore → delete) | — | Turn on the commented-out chainsaw steps. Run against a real operator, not one scaled to 0 |
 | Align the version catalog with the operator | `medusa.containerImage`, `cassandra.serverVersion` | Apply the bundle's Medusa image, or drop it from the catalog. Add current 4.1.x / 5.0.x patch releases |
 | Per-component status (`status.components`) | `CassandraDatacenter.status.nodeStatuses`, StatefulSet ready counts | Report ready/total pods for `engine`, and error/progress conditions beyond `CassandraInitialized` |
-| Scheduling policy | `datacenters[].racks[].affinity`, `tolerations`, `podTemplateSpec` | Map `components.engine.schedulingPolicy` (nodeSelector, affinity, tolerations, topology spread) |
+| Scheduling policy | `racks[].affinity`, `tolerations` | Done for `components.engine.schedulingPolicy`: nodeSelector, tolerations, node affinity and pod anti-affinity (added to the one-pod-per-node default). K8ssandraCluster has no `schedulerName` or topology spread, and cass-operator drops pod affinity, so those are rejected |
 | Bootstrap credentials | `cassandra.superuserSecretRef` | Map `spec.userSecretRef`. Validate the `username` / `password` keys |
 | Soft pod anti-affinity (dev/test) | `datacenters[].softPodAntiAffinity` | Lets multi-node clusters run on small or single-node dev clusters |
 | Finish monitoring wiring | `cassandra.telemetry.prometheus`, `commonLabels` | Label ServiceMonitors so a Prometheus can discover them. Use the native metrics endpoint (4.1+) instead of MCAC. `MonitoringConfig` is PMM-only ([#8](https://github.com/openeverest/provider-cassandra/issues/8)), so drop the stale `monitoringConfigName` row from the README |
@@ -131,7 +131,7 @@ A summary of which k8ssandra-operator (`1.32.x`) capabilities the provider cover
 | Single DC, size, resources, storage | ✅ | ✅ 0.1 |
 | Heap sizing | ✅ | ✅ 0.1 |
 | Full JVM / `cassandra.yaml` tuning | ✅ | 🗓 0.3 (curated) |
-| Scheduling (affinity, tolerations, spread) | ✅ | 🗓 0.2 |
+| Scheduling (affinity, tolerations, spread) | ✅ | ✅ 0.2 (no spread) |
 | Racks / zone awareness | ✅ | 🗓 0.3 |
 | Multi-DC (one Kubernetes cluster) | ✅ | 🗓 Later |
 | Multi-cluster (`ClientConfig`) | ✅ | ⏸ needs core |

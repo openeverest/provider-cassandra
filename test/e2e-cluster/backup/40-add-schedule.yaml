@@ -11,4 +11,6 @@ spec:
           - name: every-minute
             enabled: true
             cron: "* * * * *"
-            retentionCopies: 2
+            retention:
+              type: count
+              count: 2

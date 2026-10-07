@@ -6,6 +6,12 @@ metadata:
   name: cass-core
 spec:
   cassandra:
+    metadata:
+      pods:
+        labels:
+          core.openeverest.io/component: engine
+          core.openeverest.io/instance: cass-core
+          core.openeverest.io/provider: provider-cassandra
     serverType: cassandra
     serverVersion: 4.1.9
     serverImage: k8ssandra/cass-management-api:4.1.9-ubi

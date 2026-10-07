@@ -16,7 +16,9 @@ spec:
           - name: hourly
             enabled: true
             cron: "0 * * * *"
-            retentionCopies: 3
+            retention:
+              type: count
+              count: 3
   components:
     engine:
       type: cassandra

@@ -72,7 +72,7 @@ Stateful workloads additionally report:
 | Storage expansion | ✅ | when the StorageClass allows volume expansion |
 | Backups (on demand) | ✅ | operator-native (`executionMode: ProviderManaged`) via Medusa |
 | Restore | ✅ | in place, via Medusa restore jobs |
-| Scheduled backups | ✅ | recurring backups via Medusa's native scheduler; retention (`retentionCopies`) is enforced cluster-wide, not per-schedule |
+| Scheduled backups | ✅ | recurring backups via Medusa's native scheduler; retention (`retention`, `count` type only) is enforced cluster-wide, not per-schedule |
 | PITR | 🚧 | not yet supported |
 
 ## Installation

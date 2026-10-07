@@ -57,6 +57,11 @@ func buildMedusa(c *controller.Context) (*medusaapi.MedusaClusterTemplate, error
 		return nil, nil
 	}
 
+	retention, err := maxRetentionCopies(backupCfg.Storages[0].Schedules)
+	if err != nil {
+		return nil, err
+	}
+
 	storageRef := backupCfg.Storages[0].StorageRef
 	bs := &backupv1alpha1.BackupStorage{}
 	if err := c.Get(bs, storageRef.Name); err != nil {
@@ -87,7 +92,7 @@ func buildMedusa(c *controller.Context) (*medusaapi.MedusaClusterTemplate, error
 			SslVerify:        s3.VerifyTLS == nil || *s3.VerifyTLS,
 			Prefix:           c.Name(),
 			StorageSecretRef: corev1.LocalObjectReference{Name: credentialsSecret},
-			MaxBackupCount:   int(maxRetentionCopies(backupCfg.Storages[0].Schedules)),
+			MaxBackupCount:   int(retention),
 		},
 	}, nil
 }

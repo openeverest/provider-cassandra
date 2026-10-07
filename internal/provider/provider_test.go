@@ -23,6 +23,7 @@ import (
 	k8ssandraapi "github.com/k8ssandra/k8ssandra-operator/apis/k8ssandra/v1alpha1"
 	medusaapi "github.com/k8ssandra/k8ssandra-operator/apis/medusa/v1alpha1"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -610,4 +611,61 @@ func TestBuildConnectionDetails(t *testing.T) {
 			assert.True(t, strings.HasPrefix(details.Host, instance.Name+"-dc1-"))
 		}
 	})
+}
+
+// The runtime only reports status.components for components labelled during Sync.
+func TestSyncLabelsEnginePods(t *testing.T) {
+	t.Parallel()
+
+	instance := newTestInstance(map[string]corev1alpha1.ComponentSpec{
+		common.ComponentEngine:     {Type: common.ComponentTypeCassandra, Image: "k8ssandra/cass-management-api:5.0.4-ubi"},
+		common.ComponentMonitoring: {Type: common.ComponentTypePrometheus},
+	}, nil)
+	c := fakeClientContext(instance)
+
+	require.NoError(t, New().Sync(c))
+
+	kc := &k8ssandraapi.K8ssandraCluster{}
+	require.NoError(t, c.Get(kc, instance.Name))
+	assert.Equal(t, map[string]string{
+		controller.ProviderLabel:  common.ProviderName,
+		controller.InstanceLabel:  instance.Name,
+		controller.ComponentLabel: common.ComponentEngine,
+	}, kc.Spec.Cassandra.Meta.Pods.Labels)
+	assert.Equal(t, []string{common.ComponentEngine}, c.LabelledComponents())
+}
+
+// Sync server-side applies the K8ssandraCluster, so a setting the Instance
+// drops must disappear from the live object rather than linger.
+func TestSyncReapplyDropsRemovedSettings(t *testing.T) {
+	t.Parallel()
+
+	engine := engineWithParameters(t, components.CassandraParameters{HeapInitialSize: "1Gi", HeapMaxSize: "2Gi"})
+	engine.Type = common.ComponentTypeCassandra
+	engine.Image = "k8ssandra/cass-management-api:5.0.4-ubi"
+	instance := newTestInstance(map[string]corev1alpha1.ComponentSpec{
+		common.ComponentEngine:     engine,
+		common.ComponentMonitoring: {Type: common.ComponentTypePrometheus},
+	}, nil)
+	c := fakeClientContext(instance)
+	p := New()
+
+	require.NoError(t, p.Sync(c))
+	kc := &k8ssandraapi.K8ssandraCluster{}
+	require.NoError(t, c.Get(kc, instance.Name))
+	require.NotNil(t, kc.Spec.Cassandra.CassandraConfig)
+	require.NotNil(t, kc.Spec.Cassandra.Telemetry)
+	dcName := kc.Spec.Cassandra.Datacenters[0].Meta.Name
+
+	engine.Parameters = nil
+	instance.Spec.Components = map[string]corev1alpha1.ComponentSpec{common.ComponentEngine: engine}
+	c2 := controller.NewContext(context.Background(), c.Client(), instance, common.ProviderName)
+	require.NoError(t, p.Sync(c2))
+
+	kc = &k8ssandraapi.K8ssandraCluster{}
+	require.NoError(t, c2.Get(kc, instance.Name))
+	assert.Nil(t, kc.Spec.Cassandra.CassandraConfig)
+	assert.Nil(t, kc.Spec.Cassandra.Telemetry)
+	assert.Equal(t, dcName, kc.Spec.Cassandra.Datacenters[0].Meta.Name, "datacenter name must survive a re-apply")
+	assert.NotNil(t, kc.Spec.Cassandra.Resources, "resources must be grandfathered across a re-apply")
 }

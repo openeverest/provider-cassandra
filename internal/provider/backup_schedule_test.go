@@ -71,43 +71,72 @@ func TestMedusaScheduleName(t *testing.T) {
 	})
 }
 
+func countRetention(n int32) *corev1alpha1.BackupScheduleRetention {
+	return &corev1alpha1.BackupScheduleRetention{Type: corev1alpha1.BackupScheduleRetentionTypeCount, Count: ptr.To(n)}
+}
+
 func TestMaxRetentionCopies(t *testing.T) {
 	t.Parallel()
 
 	tests := map[string]struct {
 		schedules []corev1alpha1.InstanceBackupSchedule
 		want      int32
+		wantErr   bool
 	}{
 		"no schedules means no retention limit": {
 			schedules: nil,
 			want:      0,
 		},
+		"unset retention keeps all": {
+			schedules: []corev1alpha1.InstanceBackupSchedule{
+				{Name: "daily", Enabled: true},
+			},
+			want: 0,
+		},
 		"disabled schedule is ignored": {
 			schedules: []corev1alpha1.InstanceBackupSchedule{
-				{Name: "daily", Enabled: false, RetentionCopies: 10},
+				{Name: "daily", Enabled: false, Retention: countRetention(10)},
 			},
 			want: 0,
 		},
 		"single enabled schedule": {
 			schedules: []corev1alpha1.InstanceBackupSchedule{
-				{Name: "daily", Enabled: true, RetentionCopies: 5},
+				{Name: "daily", Enabled: true, Retention: countRetention(5)},
 			},
 			want: 5,
 		},
 		"largest among multiple enabled schedules wins": {
 			schedules: []corev1alpha1.InstanceBackupSchedule{
-				{Name: "daily", Enabled: true, RetentionCopies: 5},
-				{Name: "weekly", Enabled: true, RetentionCopies: 12},
-				{Name: "disabled", Enabled: false, RetentionCopies: 99},
+				{Name: "daily", Enabled: true, Retention: countRetention(5)},
+				{Name: "weekly", Enabled: true, Retention: countRetention(12)},
+				{Name: "disabled", Enabled: false, Retention: countRetention(99)},
 			},
 			want: 12,
+		},
+		"time retention is rejected": {
+			schedules: []corev1alpha1.InstanceBackupSchedule{
+				{Name: "daily", Enabled: true, Retention: &corev1alpha1.BackupScheduleRetention{
+					Type:     corev1alpha1.BackupScheduleRetentionTypeTime,
+					Duration: "30d",
+				}},
+			},
+			wantErr: true,
 		},
 	}
 
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			assert.Equal(t, tc.want, maxRetentionCopies(tc.schedules))
+			got, err := maxRetentionCopies(tc.schedules)
+			if tc.wantErr {
+				bce := controller.AsBackupConfigError(err)
+				if assert.NotNil(t, bce) {
+					assert.Equal(t, "RetentionTypeUnsupported", bce.Reason)
+				}
+				return
+			}
+			assert.NoError(t, err)
+			assert.Equal(t, tc.want, got)
 		})
 	}
 }
@@ -134,7 +163,7 @@ func TestSyncScheduledBackups(t *testing.T) {
 	t.Run("creates a MedusaBackupSchedule per enabled schedule and a purge schedule when retention is set", func(t *testing.T) {
 		t.Parallel()
 		instance := backupInstance([]corev1alpha1.InstanceBackupSchedule{
-			{Name: "daily", Enabled: true, Cron: "0 2 * * *", RetentionCopies: 7},
+			{Name: "daily", Enabled: true, Cron: "0 2 * * *", Retention: countRetention(7)},
 		})
 		c := fakeClientContext(instance)
 
@@ -161,7 +190,7 @@ func TestSyncScheduledBackups(t *testing.T) {
 	t.Run("no purge schedule when no schedule requests retention", func(t *testing.T) {
 		t.Parallel()
 		instance := backupInstance([]corev1alpha1.InstanceBackupSchedule{
-			{Name: "daily", Enabled: true, Cron: "0 2 * * *", RetentionCopies: 0},
+			{Name: "daily", Enabled: true, Cron: "0 2 * * *"},
 		})
 		c := fakeClientContext(instance)
 
@@ -201,7 +230,7 @@ func TestSyncScheduledBackups(t *testing.T) {
 	t.Run("disabling backups prunes all schedules and the purge schedule", func(t *testing.T) {
 		t.Parallel()
 		instance := backupInstance([]corev1alpha1.InstanceBackupSchedule{
-			{Name: "daily", Enabled: true, Cron: "0 2 * * *", RetentionCopies: 3},
+			{Name: "daily", Enabled: true, Cron: "0 2 * * *", Retention: countRetention(3)},
 		})
 		c := fakeClientContext(instance)
 		require.NoError(t, SyncScheduledBackups(c))
