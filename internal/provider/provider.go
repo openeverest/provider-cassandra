@@ -9,6 +9,7 @@ import (
 	k8ssandraapi "github.com/k8ssandra/k8ssandra-operator/apis/k8ssandra/v1alpha1"
 	medusaapi "github.com/k8ssandra/k8ssandra-operator/apis/medusa/v1alpha1"
 	telemetryapi "github.com/k8ssandra/k8ssandra-operator/apis/telemetry/v1alpha1"
+	"github.com/k8ssandra/k8ssandra-operator/pkg/meta"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -213,6 +214,11 @@ func (p *Provider) buildCassandra(c *controller.Context) (*k8ssandraapi.Cassandr
 	}
 
 	return &k8ssandraapi.CassandraClusterTemplate{
+		// Only the Cassandra pods carry component labels: Medusa runs as their
+		// sidecar and monitoring only adds a ServiceMonitor.
+		Meta: meta.CassandraClusterMeta{
+			Pods: meta.Tags{Labels: c.PodLabels(common.ComponentEngine)},
+		},
 		ServerType: k8ssandraapi.ServerDistributionCassandra,
 		DatacenterOptions: k8ssandraapi.DatacenterOptions{
 			ServerVersion:   version,

@@ -6,6 +6,12 @@ status:
   phase: Ready
   connectionSecretRef:
     name: cass-core-conn
+  # k8ssandra-operator is not deployed, so the component has no pods.
+  components:
+    - name: engine
+      selector: core.openeverest.io/component=engine,core.openeverest.io/instance=cass-core
+      replicas: 0
+      readyReplicas: 0
 ---
 apiVersion: v1
 kind: Secret

@@ -613,6 +613,28 @@ func TestBuildConnectionDetails(t *testing.T) {
 	})
 }
 
+// The runtime only reports status.components for components labelled during Sync.
+func TestSyncLabelsEnginePods(t *testing.T) {
+	t.Parallel()
+
+	instance := newTestInstance(map[string]corev1alpha1.ComponentSpec{
+		common.ComponentEngine:     {Type: common.ComponentTypeCassandra, Image: "k8ssandra/cass-management-api:5.0.4-ubi"},
+		common.ComponentMonitoring: {Type: common.ComponentTypePrometheus},
+	}, nil)
+	c := fakeClientContext(instance)
+
+	require.NoError(t, New().Sync(c))
+
+	kc := &k8ssandraapi.K8ssandraCluster{}
+	require.NoError(t, c.Get(kc, instance.Name))
+	assert.Equal(t, map[string]string{
+		controller.ProviderLabel:  common.ProviderName,
+		controller.InstanceLabel:  instance.Name,
+		controller.ComponentLabel: common.ComponentEngine,
+	}, kc.Spec.Cassandra.Meta.Pods.Labels)
+	assert.Equal(t, []string{common.ComponentEngine}, c.LabelledComponents())
+}
+
 // Sync server-side applies the K8ssandraCluster, so a setting the Instance
 // drops must disappear from the live object rather than linger.
 func TestSyncReapplyDropsRemovedSettings(t *testing.T) {
