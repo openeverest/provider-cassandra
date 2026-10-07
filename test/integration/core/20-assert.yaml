@@ -10,6 +10,7 @@ spec:
         cpu: "1"
         memory: 4Gi
       limits:
+        cpu: "1"
         memory: 4Gi
     storageConfig:
       cassandraDataVolumeClaimSpec:

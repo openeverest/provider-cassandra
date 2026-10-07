@@ -20,7 +20,23 @@ spec:
         cpu: 500m
         memory: 2Gi
       limits:
+        cpu: 500m
         memory: 2Gi
+    # Pods prefer separate nodes instead of cass-operator's required one per node.
+    softPodAntiAffinity: true
+    racks:
+      - name: default
+        affinity:
+          podAntiAffinity:
+            preferredDuringSchedulingIgnoredDuringExecution:
+              - weight: 100
+                podAffinityTerm:
+                  topologyKey: kubernetes.io/hostname
+                  labelSelector:
+                    matchLabels:
+                      core.openeverest.io/component: engine
+                      core.openeverest.io/instance: cass-core
+                      core.openeverest.io/provider: provider-cassandra
     storageConfig:
       cassandraDataVolumeClaimSpec:
         accessModes:
