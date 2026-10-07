@@ -145,6 +145,10 @@ func (p *Provider) Validate(c *controller.Context) error {
 		return err
 	}
 
+	if err := validateScheduling(engine.SchedulingPolicy); err != nil {
+		return err
+	}
+
 	if topology := c.Instance().Spec.Topology; topology != nil && topology.Type != "" &&
 		topology.Type != common.TopologySingleDatacenter {
 		return fmt.Errorf("unsupported topology %q: this provider only supports %q",
@@ -213,7 +217,7 @@ func (p *Provider) buildCassandra(c *controller.Context) (*k8ssandraapi.Cassandr
 		return nil, err
 	}
 
-	return &k8ssandraapi.CassandraClusterTemplate{
+	cassandra := &k8ssandraapi.CassandraClusterTemplate{
 		// Only the Cassandra pods carry component labels: Medusa runs as their
 		// sidecar and monitoring only adds a ServiceMonitor.
 		Meta: meta.CassandraClusterMeta{
@@ -234,7 +238,9 @@ func (p *Provider) buildCassandra(c *controller.Context) (*k8ssandraapi.Cassandr
 				Size: size,
 			},
 		},
-	}, nil
+	}
+	applyScheduling(engine.SchedulingPolicy, cassandra)
+	return cassandra, nil
 }
 
 // buildTelemetry enables k8ssandra-operator's native Prometheus

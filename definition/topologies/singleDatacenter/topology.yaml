@@ -11,10 +11,33 @@ config:
         engine:
             defaults:
                 replicas: 3
+            supportedFields:
+                properties:
+                    version: {}
+                    image: {}
+                    storage: {}
+                    resources: {}
+                    replicas: {minimum: 1}
+                    # K8ssandraCluster has no schedulerName or topologySpreadConstraints,
+                    # and cass-operator drops podAffinity.
+                    schedulingPolicy:
+                        properties:
+                            nodeSelector: {}
+                            tolerations: {}
+                            affinity:
+                                properties:
+                                    nodeAffinity: {}
+                                    podAntiAffinity: {}
+        # Medusa runs as a sidecar of the Cassandra pods.
         backupAgent:
             optional: true
+            supportedFields:
+                properties: {}
+        # Only adds a ServiceMonitor; it runs no pods.
         monitoring:
             optional: true
+            supportedFields:
+                properties: {}
 ui:
     sections:
         databaseVersion:

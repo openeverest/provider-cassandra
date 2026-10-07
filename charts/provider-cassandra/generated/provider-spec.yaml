@@ -42,9 +42,32 @@ spec:
       components:
         backupAgent:
           optional: true
-        engine: {}
+          supportedFields:
+            openAPIV3Schema:
+              properties: {}
+        engine:
+          supportedFields:
+            openAPIV3Schema:
+              properties:
+                image: {}
+                replicas:
+                  minimum: 1
+                resources: {}
+                schedulingPolicy:
+                  properties:
+                    affinity:
+                      properties:
+                        nodeAffinity: {}
+                        podAntiAffinity: {}
+                    nodeSelector: {}
+                    tolerations: {}
+                storage: {}
+                version: {}
         monitoring:
           optional: true
+          supportedFields:
+            openAPIV3Schema:
+              properties: {}
   uiSchema:
     singleDatacenter:
       sections:
