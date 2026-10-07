@@ -297,14 +297,9 @@ func TestDefaultEngineResources(t *testing.T) {
 
 	got := defaultEngineResources()
 
-	assert.Equal(t, resource.MustParse(defaultEngineCPURequest), got.Requests[corev1.ResourceCPU])
+	assert.Equal(t, resource.MustParse(defaultEngineCPU), got.Requests[corev1.ResourceCPU])
 	assert.Equal(t, resource.MustParse(defaultEngineMemory), got.Requests[corev1.ResourceMemory])
-	// Memory request equals limit so the JVM sees a stable ceiling to size
-	// its heap against; CPU is intentionally left unlimited so the
-	// container can burst.
-	assert.Equal(t, resource.MustParse(defaultEngineMemory), got.Limits[corev1.ResourceMemory])
-	_, hasCPULimit := got.Limits[corev1.ResourceCPU]
-	assert.False(t, hasCPULimit, "CPU should be requested but not limited")
+	assert.Equal(t, got.Requests, got.Limits)
 }
 
 func TestResolveEngineResources(t *testing.T) {

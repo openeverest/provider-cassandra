@@ -31,7 +31,7 @@ const (
 	defaultStorageSize       = "10Gi"
 	cqlPort                  = "9042"
 
-	// defaultEngineCPURequest and defaultEngineMemory bound the Cassandra
+	// defaultEngineCPU and defaultEngineMemory bound the Cassandra
 	// container when the Instance doesn't specify engine.resources. Without
 	// them the container has no memory ceiling, and the Cassandra JVM's
 	// heap auto-sizing (which scales off host/cgroup memory) can consume
@@ -41,21 +41,22 @@ const (
 	// 2Gi was tried first and reliably OOM-killed a single-node Cassandra
 	// 5.0 container under real load; 4Gi matches the "reasonable
 	// configuration" documented in examples/instance-example.yaml.
-	defaultEngineCPURequest = "1"
-	defaultEngineMemory     = "4Gi"
+	defaultEngineCPU    = "1"
+	defaultEngineMemory = "4Gi"
 )
 
 // defaultEngineResources returns the resource requirements applied to the
 // Cassandra container when the Instance doesn't specify engine.resources.
-// Memory request and limit are equal so the JVM sees a stable ceiling to
-// size its heap against.
+// Requests equal limits: the JVM sees a stable memory ceiling to size its
+// heap against, and softPodAntiAffinity requires CPU and memory limits.
 func defaultEngineResources() *corev1.ResourceRequirements {
 	return &corev1.ResourceRequirements{
 		Requests: corev1.ResourceList{
-			corev1.ResourceCPU:    resource.MustParse(defaultEngineCPURequest),
+			corev1.ResourceCPU:    resource.MustParse(defaultEngineCPU),
 			corev1.ResourceMemory: resource.MustParse(defaultEngineMemory),
 		},
 		Limits: corev1.ResourceList{
+			corev1.ResourceCPU:    resource.MustParse(defaultEngineCPU),
 			corev1.ResourceMemory: resource.MustParse(defaultEngineMemory),
 		},
 	}
@@ -217,11 +218,12 @@ func (p *Provider) buildCassandra(c *controller.Context) (*k8ssandraapi.Cassandr
 		return nil, err
 	}
 
+	podLabels := c.PodLabels(common.ComponentEngine)
 	cassandra := &k8ssandraapi.CassandraClusterTemplate{
 		// Only the Cassandra pods carry component labels: Medusa runs as their
 		// sidecar and monitoring only adds a ServiceMonitor.
 		Meta: meta.CassandraClusterMeta{
-			Pods: meta.Tags{Labels: c.PodLabels(common.ComponentEngine)},
+			Pods: meta.Tags{Labels: podLabels},
 		},
 		ServerType: k8ssandraapi.ServerDistributionCassandra,
 		DatacenterOptions: k8ssandraapi.DatacenterOptions{
@@ -239,7 +241,9 @@ func (p *Provider) buildCassandra(c *controller.Context) (*k8ssandraapi.Cassandr
 			},
 		},
 	}
-	applyScheduling(engine.SchedulingPolicy, cassandra)
+	if err := applyScheduling(engine.SchedulingPolicy, podLabels, existing, cassandra); err != nil {
+		return nil, err
+	}
 	return cassandra, nil
 }
 
