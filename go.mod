@@ -5,7 +5,7 @@ go 1.27.1
 require (
 	github.com/k8ssandra/cass-operator v1.31.0
 	github.com/k8ssandra/k8ssandra-operator v1.32.7-0.20260807121350-7e68cd0cc1d4
-	github.com/openeverest/openeverest/v2 v2.0.0-dev.4
+	github.com/openeverest/openeverest/v2 v2.0.0-dev.2.0.20261027055245-0730d3d500c1
 	github.com/stretchr/testify v1.12.1
 	k8s.io/api v0.37.1
 	k8s.io/apimachinery v0.37.1
