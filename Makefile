@@ -7,7 +7,7 @@ $(LOCALBIN):
 CONTAINER_TOOL ?= docker
 
 # OpenEverest branch to use for OpenEverest CRD installation.
-OPENEVEREST_BRANCH ?= release-2.0
+OPENEVEREST_BRANCH ?= backup/storage-runtime
 
 # Image URL to use for building/pushing image targets
 IMG ?= ghcr.io/openeverest/provider-cassandra-dev:latest
