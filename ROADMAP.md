@@ -105,7 +105,7 @@ Progress: [#27](https://github.com/openeverest/provider-cassandra/issues/27) ·
 | Stop / resume an instance | `datacenters[].stopped` | A suspend trigger in the `Instance` spec (core already defines the `Suspending` / `Suspended` phases) |
 | Day-2 operations: rolling restart, cleanup, rebuild, `upgradesstables`, compaction | `K8ssandraTask` → `CassandraTask` | An operations/actions API in core. Until then, scale-out cleanup and post-upgrade `upgradesstables` could run automatically |
 | Pending maintenance | — | Report provider-driven rolling restarts (e.g. after an operator upgrade changes the pod spec) as `status.pendingMaintenance`, gated by `spec.maintenance` |
-| GCS / Azure Blob backup storage | `storageProperties.storageProvider` (`google_storage`, `azure_blobs`) | New BackupStorage types in core (only `s3` today; see [openeverest#2555](https://github.com/openeverest/openeverest/issues/2555)) |
+| GCS / Azure Blob backup storage | `storageProperties.storageProvider` (`google_storage`, `azure_blobs`) | New BackupStorageClasses in core (only `s3` today; see [openeverest#2555](https://github.com/openeverest/openeverest/issues/2555)) |
 | Retention per schedule | `MedusaBackupSchedule` + purge | Upstream Medusa: purge applies to the whole cluster and cannot target one schedule |
 | Logs and metrics pipeline (Vector) | `telemetry.vector` | An OpenEverest-wide logging story |
 | External secrets | `secretsProvider: external` | Core support for secret injection |

@@ -12,11 +12,18 @@ kind: BackupStorage
 metadata:
   name: s3-storage
 spec:
-  type: s3
-  s3:
-    bucket: cassandra-backups
+  backupStorageClassRef:
+    name: s3
+  location:
+    objectStore:
+      bucket: cassandra-backups
+  parameters:
     region: us-east-1
     endpointURL: https://s3.example.com:9000
-    verifyTLS: false
+    implementation: other
+  authentication:
+    mode: AccessKey
     credentialsSecretRef:
       name: s3-credentials
+  tls:
+    insecureSkipVerify: true
