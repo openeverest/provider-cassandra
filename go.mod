@@ -5,7 +5,7 @@ go 1.27.1
 require (
 	github.com/k8ssandra/cass-operator v1.31.0
 	github.com/k8ssandra/k8ssandra-operator v1.32.7-0.20260807121350-7e68cd0cc1d4
-	github.com/openeverest/openeverest/v2 v2.0.0-dev.4
+	github.com/openeverest/openeverest/v2 v2.0.0-dev.2.0.20261031160104-33d0b69d45d8
 	github.com/stretchr/testify v1.12.1
 	k8s.io/api v0.37.1
 	k8s.io/apimachinery v0.37.1
@@ -33,6 +33,7 @@ require (
 	github.com/aws/smithy-go v1.28.1 // indirect
 	github.com/aymanbagabas/go-osc52/v2 v2.0.1 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
+	github.com/blang/semver/v4 v4.0.0 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/charmbracelet/bubbles v1.0.0 // indirect
 	github.com/charmbracelet/bubbletea v1.3.10 // indirect
@@ -89,7 +90,7 @@ require (
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/oasdiff/yaml v0.1.1 // indirect
 	github.com/oasdiff/yaml3 v0.0.14 // indirect
-	github.com/openeverest/provider-sdk v0.3.1-0.20261009133615-c77f6c55210d // indirect
+	github.com/openeverest/provider-sdk v0.3.1-0.20261031160606-37ff3b2b4660 // indirect
 	github.com/pavel-v-chernykh/keystore-go v2.1.0+incompatible // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect

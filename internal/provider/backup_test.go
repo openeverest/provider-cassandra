@@ -21,9 +21,10 @@ import (
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/utils/ptr"
+	"k8s.io/apimachinery/pkg/runtime"
 
 	backupv1alpha1 "github.com/openeverest/openeverest/v2/api/backup/v1alpha1"
+	"github.com/openeverest/openeverest/v2/api/backup/v1alpha1/storageclasses"
 	commonv1alpha1 "github.com/openeverest/openeverest/v2/api/common/v1alpha1"
 )
 
@@ -79,18 +80,20 @@ func TestParseS3Endpoint(t *testing.T) {
 	}
 }
 
-func backupStorage(endpointURL string, verifyTLS *bool) *backupv1alpha1.BackupStorage {
+func backupStorage(endpointURL string, tls *commonv1alpha1.TLSConfig) *backupv1alpha1.BackupStorage {
 	return &backupv1alpha1.BackupStorage{
 		ObjectMeta: metav1.ObjectMeta{Name: "my-storage", Namespace: "default"},
 		Spec: backupv1alpha1.BackupStorageSpec{
-			Type: backupv1alpha1.BackupStorageTypeS3,
-			S3: &backupv1alpha1.BackupStorageS3Spec{
-				Bucket:               "backups",
-				Region:               "us-east-1",
-				EndpointURL:          endpointURL,
-				VerifyTLS:            verifyTLS,
-				CredentialsSecretRef: commonv1alpha1.SecretRef{Name: "my-storage-credentials"},
+			BackupStorageClassRef: commonv1alpha1.ObjectRef{Name: storageclasses.ClassS3},
+			Location:              backupv1alpha1.BackupStorageLocation{Bucket: "backups"},
+			Parameters: &runtime.RawExtension{
+				Raw: []byte(`{"region":"us-east-1","endpointURL":"` + endpointURL + `"}`),
 			},
+			Authentication: commonv1alpha1.Authentication{
+				Mode:                 storageclasses.AuthModeAccessKey,
+				CredentialsSecretRef: &commonv1alpha1.SecretRef{Name: "my-storage-credentials"},
+			},
+			TLS: tls,
 		},
 	}
 }
@@ -113,7 +116,7 @@ func TestBuildMedusa(t *testing.T) {
 	t.Run("splits the endpoint and points Medusa at a derived credentials file", func(t *testing.T) {
 		t.Parallel()
 		c := fakeClientContext(backupInstance(nil),
-			backupStorage("http://minio.minio.svc.cluster.local:9000", ptr.To(false)),
+			backupStorage("http://minio.minio.svc.cluster.local:9000", &commonv1alpha1.TLSConfig{InsecureSkipVerify: true}),
 			storageCredentials(validCredentials))
 
 		medusa, err := buildMedusa(c)
@@ -155,6 +158,6 @@ func TestBuildMedusa(t *testing.T) {
 			storageCredentials(map[string][]byte{"credentials": []byte("[default]")}))
 
 		_, err := buildMedusa(c)
-		require.ErrorContains(t, err, "must contain AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY")
+		require.ErrorContains(t, err, "needs AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY")
 	})
 }

@@ -67,16 +67,16 @@ func buildMedusa(c *controller.Context) (*medusaapi.MedusaClusterTemplate, error
 	if err := c.Get(bs, storageRef.Name); err != nil {
 		return nil, fmt.Errorf("get BackupStorage %s: %w", storageRef.Name, err)
 	}
-	if string(bs.Spec.Type) != "s3" || bs.Spec.S3 == nil {
-		return nil, fmt.Errorf("medusa backups require an s3 BackupStorage, got %q", bs.Spec.Type)
+	s3, _, err := c.BackupStorageS3(bs)
+	if err != nil {
+		return nil, fmt.Errorf("BackupStorage %s: %w", storageRef.Name, err)
 	}
 
-	s3 := bs.Spec.S3
 	endpoint, err := parseS3Endpoint(s3.EndpointURL)
 	if err != nil {
 		return nil, fmt.Errorf("BackupStorage %s: %w", storageRef.Name, err)
 	}
-	credentialsSecret, err := syncMedusaCredentials(c, s3.CredentialsSecretRef.Name)
+	credentialsSecret, err := syncMedusaCredentials(c, bs.Spec.Authentication.CredentialsSecretRef.Name)
 	if err != nil {
 		return nil, err
 	}
@@ -84,12 +84,12 @@ func buildMedusa(c *controller.Context) (*medusaapi.MedusaClusterTemplate, error
 	return &medusaapi.MedusaClusterTemplate{
 		StorageProperties: medusaapi.Storage{
 			StorageProvider:  medusaS3Provider,
-			BucketName:       s3.Bucket,
+			BucketName:       bs.Spec.Location.Bucket,
 			Region:           s3.Region,
 			Host:             endpoint.host,
 			Port:             endpoint.port,
 			Secure:           endpoint.secure,
-			SslVerify:        s3.VerifyTLS == nil || *s3.VerifyTLS,
+			SslVerify:        bs.Spec.TLS == nil || !bs.Spec.TLS.InsecureSkipVerify,
 			Prefix:           c.Name(),
 			StorageSecretRef: corev1.LocalObjectReference{Name: credentialsSecret},
 			MaxBackupCount:   int(retention),

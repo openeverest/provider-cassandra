@@ -5,6 +5,10 @@ kind: BackupClass
 metadata:
   name: medusa
 spec:
+  backupStorageClasses:
+    - authModes:
+        - AccessKey
+      name: s3
   description: 'TODO: describe what this BackupClass does.'
   displayName: Medusa Backup Class
   executionMode: ProviderManaged
