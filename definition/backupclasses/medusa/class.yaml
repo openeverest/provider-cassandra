@@ -5,6 +5,8 @@
 #   displayName/description: human-readable metadata.
 #   supportedProviders: providers this class can be used with.
 #   executionMode: "ProviderManaged" (operator-native) or "Job".
+#   backupStorageClasses: the BackupStorageClasses this class can write to,
+#     each with the authentication modes it supports. Required.
 #   providerManaged.supportsPITR: advertise PITR capability to Restore validation.
 #   providerManaged.limits: caps the runtime enforces against Instance.spec.backup.
 #     maxStorages, maxPITREnabledStorages, maxSchedulesPerStorage — unset means unlimited.
@@ -18,6 +20,10 @@
 #   ui.yaml  — free-form UI rendering hints, inlined verbatim under spec.uiSchema.
 #   types.go — Go types referenced above; OpenAPI-extracted by provider-sdk generate.
 
+backupStorageClasses:
+    - name: s3
+      authModes:
+          - AccessKey
 description: 'TODO: describe what this BackupClass does.'
 displayName: Medusa Backup Class
 executionMode: ProviderManaged

@@ -7,7 +7,7 @@ $(LOCALBIN):
 CONTAINER_TOOL ?= docker
 
 # OpenEverest branch to use for OpenEverest CRD installation.
-OPENEVEREST_BRANCH ?= release-2.0
+OPENEVEREST_BRANCH ?= backup/storage-runtime
 
 # Image URL to use for building/pushing image targets
 IMG ?= ghcr.io/openeverest/provider-cassandra-dev:latest
@@ -188,6 +188,9 @@ install-crds: helm-deps ## Install OpenEverest CRDs and the k8ssandra-operator C
 	kubectl apply -f https://raw.githubusercontent.com/openeverest/openeverest/$(OPENEVEREST_BRANCH)/config/crd/bases/backup.openeverest.io_backups.yaml
 	kubectl apply -f https://raw.githubusercontent.com/openeverest/openeverest/$(OPENEVEREST_BRANCH)/config/crd/bases/backup.openeverest.io_restores.yaml
 	kubectl apply -f https://raw.githubusercontent.com/openeverest/openeverest/$(OPENEVEREST_BRANCH)/config/crd/bases/backup.openeverest.io_backupstorages.yaml
+	kubectl apply -f https://raw.githubusercontent.com/openeverest/openeverest/$(OPENEVEREST_BRANCH)/config/crd/bases/backup.openeverest.io_backupstorageclasses.yaml
+	kubectl wait --for condition=established --timeout=30s crd/backupstorageclasses.backup.openeverest.io
+	kubectl apply -f https://raw.githubusercontent.com/openeverest/openeverest/$(OPENEVEREST_BRANCH)/config/backupstorageclasses/s3.yaml
 	@rm -rf $(OPERATOR_CHART_DIR) && mkdir -p $(OPERATOR_CHART_DIR)
 	tar -xzf $(CHART_DIR)/charts/k8ssandra-operator-*.tgz -C $(OPERATOR_CHART_DIR)
 	find $(OPERATOR_CHART_DIR) -path '*/crds/*.yaml' -exec kubectl apply --server-side -f {} \;
