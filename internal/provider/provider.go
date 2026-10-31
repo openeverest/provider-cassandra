@@ -139,7 +139,7 @@ func (p *Provider) Sync(c *controller.Context) error {
 	}
 	kc.Spec.Cassandra = cassandra
 
-	medusa, err := buildMedusa(c)
+	medusa, held, err := buildMedusa(c)
 	if err != nil {
 		return err
 	}
@@ -155,6 +155,10 @@ func (p *Provider) Sync(c *controller.Context) error {
 		return err
 	}
 
+	// A held storage keeps its schedules as they are, like its Medusa config.
+	if held {
+		return nil
+	}
 	return SyncScheduledBackups(c)
 }
 
