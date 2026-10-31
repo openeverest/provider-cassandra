@@ -5,7 +5,7 @@ go 1.27.1
 require (
 	github.com/k8ssandra/cass-operator v1.31.0
 	github.com/k8ssandra/k8ssandra-operator v1.32.7-0.20260807121350-7e68cd0cc1d4
-	github.com/openeverest/openeverest/v2 v2.0.0-dev.2.0.20261105181435-0223b79fa57d
+	github.com/openeverest/openeverest/v2 v2.0.0-dev.2.0.20261108203023-87cec094317e
 	github.com/stretchr/testify v1.12.1
 	k8s.io/api v0.37.1
 	k8s.io/apimachinery v0.37.1
@@ -94,7 +94,7 @@ require (
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/oasdiff/yaml v0.1.1 // indirect
 	github.com/oasdiff/yaml3 v0.0.14 // indirect
-	github.com/openeverest/provider-sdk v0.3.1-0.20261105152211-04995b27cda5 // indirect
+	github.com/openeverest/provider-sdk v0.3.1-0.20261108205846-d909142ae957 // indirect
 	github.com/pavel-v-chernykh/keystore-go v2.1.0+incompatible // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
