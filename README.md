@@ -182,8 +182,8 @@ the target version — upgrade the provider chart first.
 - **Chart values:** [charts/provider-cassandra/values.yaml](charts/provider-cassandra/values.yaml)
 - **Instance parameters:** per-component and per-topology `parameters` schemas, defined under
   [definition/](definition/) and published on the `Provider` resource
-  (`kubectl get provider provider-cassandra -o yaml`). The API server and the UI validate user
-  input against these schemas.
+  (`kubectl get provider provider-cassandra -o yaml`). The provider checks every Instance
+  against them, and the UI checks the form against them as you type.
 
 The technology-specific knobs worth knowing about:
 

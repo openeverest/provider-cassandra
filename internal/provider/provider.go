@@ -14,6 +14,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/util/validation/field"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -132,33 +133,6 @@ var clusterHealthChanged = predicate.Funcs{
 	},
 }
 
-// Validate checks if the Instance spec is valid for a Cassandra deployment.
-func (p *Provider) Validate(c *controller.Context) error {
-	engine, ok := c.Instance().Spec.Components[common.ComponentEngine]
-	if !ok {
-		return fmt.Errorf("the %q component is required", common.ComponentEngine)
-	}
-	if engine.Replicas != nil && *engine.Replicas < 1 {
-		return fmt.Errorf("%q replicas must be at least 1", common.ComponentEngine)
-	}
-
-	if _, err := resolveJvmOptions(engine); err != nil {
-		return err
-	}
-
-	if err := validateScheduling(engine.SchedulingPolicy); err != nil {
-		return err
-	}
-
-	if topology := c.Instance().Spec.Topology; topology != nil && topology.Type != "" &&
-		topology.Type != common.TopologySingleDatacenter {
-		return fmt.Errorf("unsupported topology %q: this provider only supports %q",
-			topology.Type, common.TopologySingleDatacenter)
-	}
-
-	return nil
-}
-
 // Sync creates or updates the K8ssandraCluster that backs this Instance.
 func (p *Provider) Sync(c *controller.Context) error {
 	l := log.FromContext(c.Context())
@@ -213,9 +187,9 @@ func (p *Provider) buildCassandra(c *controller.Context) (*k8ssandraapi.Cassandr
 	dcName := resolveDatacenterName(c.Name(), existing)
 	resources := resolveEngineResources(engine.Resources, existing)
 
-	jvmOptions, err := resolveJvmOptions(engine)
-	if err != nil {
-		return nil, err
+	jvmOptions, jvmErrs := resolveJvmOptions(engine)
+	if len(jvmErrs) > 0 {
+		return nil, jvmErrs.ToAggregate()
 	}
 
 	podLabels := c.PodLabels(common.ComponentEngine)
@@ -344,28 +318,35 @@ func resolveEngineImage(c *controller.Context, engine corev1alpha1.ComponentSpec
 // value is returned and buildCassandraConfig produces no CassandraConfig,
 // leaving k8ssandra-operator's own heap auto-sizing (based on the engine
 // container's memory request/limit) in charge, matching prior behavior.
-func resolveJvmOptions(engine corev1alpha1.ComponentSpec) (k8ssandraapi.JvmOptions, error) {
+func resolveJvmOptions(engine corev1alpha1.ComponentSpec) (k8ssandraapi.JvmOptions, field.ErrorList) {
+	path := field.NewPath("spec", "components").Key(common.ComponentEngine).Child("parameters")
 	var params components.CassandraParameters
 	if engine.Parameters != nil && engine.Parameters.Raw != nil {
 		if err := json.Unmarshal(engine.Parameters.Raw, &params); err != nil {
-			return k8ssandraapi.JvmOptions{}, fmt.Errorf("decoding %q parameters: %w", common.ComponentEngine, err)
+			return k8ssandraapi.JvmOptions{}, field.ErrorList{field.Invalid(path, field.OmitValueType{}, err.Error())}
 		}
 	}
 
 	var jvmOptions k8ssandraapi.JvmOptions
+	var errs field.ErrorList
 	if params.HeapInitialSize != "" {
 		q, err := resource.ParseQuantity(params.HeapInitialSize)
 		if err != nil {
-			return k8ssandraapi.JvmOptions{}, fmt.Errorf("%q heapInitialSize %q: %w", common.ComponentEngine, params.HeapInitialSize, err)
+			errs = append(errs, field.Invalid(path.Child("heapInitialSize"), params.HeapInitialSize, err.Error()))
+		} else {
+			jvmOptions.InitialHeapSize = &q
 		}
-		jvmOptions.InitialHeapSize = &q
 	}
 	if params.HeapMaxSize != "" {
 		q, err := resource.ParseQuantity(params.HeapMaxSize)
 		if err != nil {
-			return k8ssandraapi.JvmOptions{}, fmt.Errorf("%q heapMaxSize %q: %w", common.ComponentEngine, params.HeapMaxSize, err)
+			errs = append(errs, field.Invalid(path.Child("heapMaxSize"), params.HeapMaxSize, err.Error()))
+		} else {
+			jvmOptions.MaxHeapSize = &q
 		}
-		jvmOptions.MaxHeapSize = &q
+	}
+	if len(errs) > 0 {
+		return k8ssandraapi.JvmOptions{}, errs
 	}
 
 	// The JVM refuses to start when -Xms exceeds -Xmx, so reject that
@@ -373,8 +354,8 @@ func resolveJvmOptions(engine corev1alpha1.ComponentSpec) (k8ssandraapi.JvmOptio
 	// CrashLoopBackOff on the Cassandra container.
 	if jvmOptions.InitialHeapSize != nil && jvmOptions.MaxHeapSize != nil &&
 		jvmOptions.InitialHeapSize.Cmp(*jvmOptions.MaxHeapSize) > 0 {
-		return k8ssandraapi.JvmOptions{}, fmt.Errorf("%q heapInitialSize (%s) must not exceed heapMaxSize (%s)",
-			common.ComponentEngine, jvmOptions.InitialHeapSize, jvmOptions.MaxHeapSize)
+		return k8ssandraapi.JvmOptions{}, field.ErrorList{field.Invalid(path.Child("heapInitialSize"), params.HeapInitialSize,
+			fmt.Sprintf("must not exceed heapMaxSize (%s)", jvmOptions.MaxHeapSize))}
 	}
 
 	return jvmOptions, nil

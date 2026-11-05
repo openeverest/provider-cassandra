@@ -11,6 +11,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/validation/field"
 	"k8s.io/utils/ptr"
 
 	commonv1alpha1 "github.com/openeverest/openeverest/v2/api/common/v1alpha1"
@@ -24,9 +25,9 @@ func TestValidateScheduling(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name    string
-		policy  *commonv1alpha1.SchedulingPolicy
-		wantErr string
+		name   string
+		policy *commonv1alpha1.SchedulingPolicy
+		want   []string
 	}{
 		{name: "no policy"},
 		{
@@ -50,29 +51,29 @@ func TestValidateScheduling(t *testing.T) {
 			policy: &commonv1alpha1.SchedulingPolicy{TopologySpreadConstraints: &[]corev1.TopologySpreadConstraint{
 				{MaxSkew: 1, TopologyKey: corev1.LabelTopologyZone, WhenUnsatisfiable: corev1.DoNotSchedule},
 			}},
-			wantErr: "topologySpreadConstraints",
+			want: []string{"spec.components[engine].schedulingPolicy.topologySpreadConstraints"},
 		},
 		{
-			name:    "schedulerName",
-			policy:  &commonv1alpha1.SchedulingPolicy{SchedulerName: "custom"},
-			wantErr: "schedulerName",
+			name:   "schedulerName",
+			policy: &commonv1alpha1.SchedulingPolicy{SchedulerName: "custom"},
+			want:   []string{"spec.components[engine].schedulingPolicy.schedulerName"},
 		},
 		{
-			name:    "podAffinity",
-			policy:  &commonv1alpha1.SchedulingPolicy{Affinity: &corev1.Affinity{PodAffinity: &corev1.PodAffinity{}}},
-			wantErr: "podAffinity",
+			name:   "podAffinity",
+			policy: &commonv1alpha1.SchedulingPolicy{Affinity: &corev1.Affinity{PodAffinity: &corev1.PodAffinity{}}},
+			want:   []string{"spec.components[engine].schedulingPolicy.affinity.podAffinity"},
 		},
 	}
 
+	path := field.NewPath("spec", "components").Key(common.ComponentEngine).Child("schedulingPolicy")
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			err := validateScheduling(tt.policy)
-			if tt.wantErr == "" {
-				assert.NoError(t, err)
-				return
+			var got []string
+			for _, err := range validateScheduling(path, tt.policy) {
+				got = append(got, err.Field)
 			}
-			assert.ErrorContains(t, err, tt.wantErr)
+			assert.Equal(t, tt.want, got)
 		})
 	}
 }

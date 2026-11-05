@@ -62,7 +62,7 @@ securityContext:
 service:
   # -- Service type
   type: ClusterIP
-  # -- Service port for the HTTP server (validation/health endpoints)
+  # -- Service port for the HTTP server (health endpoints)
   port: 8082
   # -- The address the metrics endpoint binds to. Use "0" to disable.
   metricsBindAddress: ":8081"

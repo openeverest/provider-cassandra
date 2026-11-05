@@ -9,6 +9,7 @@ import (
 	k8ssandraapi "github.com/k8ssandra/k8ssandra-operator/apis/k8ssandra/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/validation/field"
 	"k8s.io/utils/ptr"
 
 	commonv1alpha1 "github.com/openeverest/openeverest/v2/api/common/v1alpha1"
@@ -22,20 +23,22 @@ const defaultRack = "default"
 
 // validateScheduling rejects the engine scheduling settings K8ssandraCluster
 // cannot express, instead of silently dropping them.
-func validateScheduling(policy *commonv1alpha1.SchedulingPolicy) error {
+func validateScheduling(path *field.Path, policy *commonv1alpha1.SchedulingPolicy) field.ErrorList {
 	if policy == nil {
 		return nil
 	}
+	const detail = "the provider does not support this field"
+	var errs field.ErrorList
 	if policy.SchedulerName != "" {
-		return fmt.Errorf("%q schedulingPolicy.schedulerName is not supported", common.ComponentEngine)
+		errs = append(errs, field.Forbidden(path.Child("schedulerName"), detail))
 	}
 	if policy.TopologySpreadConstraints != nil && len(*policy.TopologySpreadConstraints) > 0 {
-		return fmt.Errorf("%q schedulingPolicy.topologySpreadConstraints is not supported", common.ComponentEngine)
+		errs = append(errs, field.Forbidden(path.Child("topologySpreadConstraints"), detail))
 	}
 	if policy.Affinity != nil && policy.Affinity.PodAffinity != nil {
-		return fmt.Errorf("%q schedulingPolicy.affinity.podAffinity is not supported", common.ComponentEngine)
+		errs = append(errs, field.Forbidden(path.Child("affinity", "podAffinity"), detail))
 	}
-	return nil
+	return errs
 }
 
 // applyScheduling places the Cassandra pods. softPodAntiAffinity turns off
