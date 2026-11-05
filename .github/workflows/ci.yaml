@@ -104,6 +104,15 @@ jobs:
       suite: core
     secrets: inherit
 
+  test-integration-core-admission:
+    name: Integration / core admission
+    needs: [lint, build, verify]
+    uses: ./.github/workflows/integration-test.yaml
+    with:
+      make_target: test-integration-core-admission
+      suite: admission
+    secrets: inherit
+
   test-integration-backup:
     name: Integration / backup
     needs: [lint, build, verify]

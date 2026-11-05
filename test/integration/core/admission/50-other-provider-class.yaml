@@ -1,0 +1,8 @@
+apiVersion: backup.openeverest.io/v1alpha1
+kind: BackupClass
+metadata:
+  name: test-admission-other-provider
+spec:
+  executionMode: ProviderManaged
+  supportedProviders:
+    - provider-percona-xtradb-cluster

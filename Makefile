@@ -47,8 +47,8 @@ help: ## Display this help.
 ##@ Development
 
 .PHONY: run
-run: generate ## Run the provider locally.
-	go run cmd/provider/main.go
+run: generate ## Run the provider locally, without the admission webhook (it needs the chart's certificate).
+	go run cmd/provider/main.go --admission=false
 
 .PHONY: lint
 lint: golangci-lint ## Run golangci-lint.
@@ -148,8 +148,12 @@ test-integration: ## Run all integration tests against the current cluster.
 	. ./test/vars.sh && chainsaw test --config ./test/integration/.chainsaw.yaml ./test/integration
 
 .PHONY: test-integration-core
-test-integration-core: ## Run core integration tests.
-	. ./test/vars.sh && chainsaw test --config ./test/integration/.chainsaw.yaml ./test/integration/core
+test-integration-core: ## Run core integration tests, except the admission suite (test-integration-core-admission).
+	. ./test/vars.sh && chainsaw test --config ./test/integration/.chainsaw.yaml --exclude-test-regex chainsaw/core-admission ./test/integration/core
+
+.PHONY: test-integration-core-admission
+test-integration-core-admission: ## Run admission webhook integration tests.
+	. ./test/vars.sh && chainsaw test --config ./test/integration/.chainsaw.yaml ./test/integration/core/admission
 
 .PHONY: test-integration-backup
 test-integration-backup: ## Run backup integration tests.
