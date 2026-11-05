@@ -1,0 +1,123 @@
+---
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: core-admission
+spec:
+  description: |
+    The provider's admission webhook: it rejects an invalid Instance with the
+    field path, admits it while the provider is down, blocks an update only
+    on errors the stored Instance did not already have, rejects another
+    provider's backup class, and warns about a missing user Secret.
+    The k8ssandra-operator is not deployed, as in the core suite.
+  # Scales the provider down, which every other test depends on.
+  concurrent: false
+  catch:
+    - script:
+        content: kubectl -n $NAMESPACE get instance,k8ssandracluster -o yaml
+    - podLogs:
+        namespace: provider-system
+        selector: app.kubernetes.io/name=provider-cassandra
+        tail: 100
+  steps:
+    - name: provider-ready
+      try:
+        - assert:
+            file: 00-assert.yaml
+
+    - name: reject-invalid
+      try:
+        - script:
+            content: kubectl apply --dry-run=server -n $NAMESPACE -f 10-invalid-instance.yaml
+            check:
+              ($error != null): true
+              (contains($stderr, 'spec.components[engine].parameters.heapInitialSize')): true
+        - script:
+            content: kubectl apply -n $NAMESPACE -f 10-invalid-instance.yaml
+            check:
+              ($error != null): true
+              (contains($stderr, 'spec.components[engine].parameters.heapInitialSize')): true
+        - error:
+            file: 10-error.yaml
+
+    - name: admit-while-provider-down
+      try:
+        - script:
+            timeout: 1m
+            content: |
+              kubectl -n provider-system scale deployment/provider-cassandra --replicas=0
+              while kubectl -n provider-system get pods -o name \
+                -l app.kubernetes.io/name=provider-cassandra | grep -q .; do
+                sleep 1
+              done
+        - apply:
+            file: 10-invalid-instance.yaml
+      finally:
+        - script:
+            timeout: 2m
+            content: |
+              kubectl -n provider-system scale deployment/provider-cassandra --replicas=1
+              kubectl -n provider-system rollout status deployment/provider-cassandra --timeout=110s
+
+    - name: report-once-back
+      try:
+        - assert:
+            file: 20-assert.yaml
+
+    - name: block-new-errors-only
+      try:
+        - script:
+            timeout: 1m
+            content: |
+              # Writes are admitted until the webhook serves again.
+              for i in $(seq 1 25); do
+                kubectl apply --dry-run=server -n $NAMESPACE -f 30-new-error.yaml >/dev/null 2>&1 || break
+                sleep 2
+              done
+              kubectl apply -n $NAMESPACE -f 30-new-error.yaml
+            check:
+              ($error != null): true
+              (contains($stderr, 'spec.components[engine].replicas')): true
+              (contains($stderr, 'spec.components[engine].parameters.heapInitialSize')): false
+        - script:
+            content: kubectl apply -n $NAMESPACE -f 31-unrelated-change.yaml
+        - assert:
+            file: 31-assert.yaml
+
+    - name: fix
+      try:
+        - apply:
+            file: 40-fixed-instance.yaml
+        - assert:
+            file: 40-assert.yaml
+
+    - name: reject-another-providers-backup-class
+      try:
+        - apply:
+            file: 50-other-provider-class.yaml
+        - script:
+            content: kubectl apply -n $NAMESPACE -f 51-other-provider-class.yaml
+            check:
+              ($error != null): true
+              (contains($stderr, 'spec.backup.classRef.name')): true
+
+    - name: warn-about-a-missing-user-secret
+      try:
+        - script:
+            content: kubectl apply -n $NAMESPACE -f 52-missing-user-secret.yaml
+            check:
+              ($error == null): true
+              (contains($stderr, 'test-admission-missing-users named by spec.userSecretRef not found')): true
+      cleanup:
+        - script:
+            content: kubectl -n $NAMESPACE delete instance/test-cass-nosecret --ignore-not-found --timeout=60s
+
+    - name: delete-instance
+      try:
+        - delete:
+            ref:
+              apiVersion: core.openeverest.io/v1alpha1
+              kind: Instance
+              name: test-cass-admission
+        - error:
+            file: 60-errors.yaml
