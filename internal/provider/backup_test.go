@@ -40,9 +40,11 @@ import (
 const (
 	minioParameters = `{"region":"us-east-1","endpointURL":"http://minio.minio.svc.cluster.local:9000",` +
 		`"implementation":"minio","forcePathStyle":true}`
-	// testStoragePath is where the runtime puts the backups of backupInstance
-	// in the location of backupStorage.
-	testStoragePath = "team/backups/default/test-instance/instance-uid/my-storage"
+	// testMedusaPrefix is the folder Medusa writes the backups of
+	// backupInstance to in the location of backupStorage: the path the
+	// runtime assigns, team/backups/default/test-instance/instance-uid/my-storage,
+	// flattened into one segment.
+	testMedusaPrefix = "team_backups_default_test-instance_instance-uid_my-storage"
 )
 
 // backupStorage returns an s3 BackupStorage the BackupStorage controller has
@@ -100,7 +102,7 @@ func liveCluster() *k8ssandraapi.K8ssandraCluster {
 				StorageProperties: medusaapi.Storage{
 					StorageProvider:  "s3_compatible",
 					BucketName:       "old-backups",
-					Prefix:           "backups/default/test-instance/instance-uid/old-storage",
+					Prefix:           "backups_default_test-instance_instance-uid_old-storage",
 					Host:             "old.example.com",
 					Port:             443,
 					Secure:           true,
@@ -196,7 +198,7 @@ func TestBuildMedusa(t *testing.T) {
 
 			want := tc.want
 			want.BucketName = "backups"
-			want.Prefix = testStoragePath
+			want.Prefix = testMedusaPrefix
 			want.StorageSecretRef = corev1.LocalObjectReference{Name: "test-instance-medusa-storage"}
 			want.MaxBackupCount = 7
 			assert.Equal(t, want, medusa.StorageProperties)
@@ -319,7 +321,7 @@ func TestSyncHoldsBackupStorage(t *testing.T) {
 		kc := &k8ssandraapi.K8ssandraCluster{}
 		require.NoError(t, c.Get(kc, "test-instance"))
 		require.NotNil(t, kc.Spec.Medusa)
-		assert.Equal(t, testStoragePath, kc.Spec.Medusa.StorageProperties.Prefix)
+		assert.Equal(t, testMedusaPrefix, kc.Spec.Medusa.StorageProperties.Prefix)
 		rendered := kc.Spec.Medusa
 
 		bs := &backupv1alpha1.BackupStorage{}
