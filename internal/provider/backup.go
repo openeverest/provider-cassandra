@@ -16,6 +16,7 @@ package provider
 
 import (
 	"fmt"
+	"strings"
 
 	k8ssandraapi "github.com/k8ssandra/k8ssandra-operator/apis/k8ssandra/v1alpha1"
 	medusaapi "github.com/k8ssandra/k8ssandra-operator/apis/medusa/v1alpha1"
@@ -116,13 +117,23 @@ func medusaStorage(c *controller.Context, s controller.ResolvedBackupStorage) (m
 	return medusaapi.Storage{
 		StorageProvider: storageProvider,
 		BucketName:      s.Storage.Spec.Location.ObjectStore.Bucket,
-		Prefix:          s.Path,
+		Prefix:          medusaPrefix(s.Path),
 		Region:          s3.Region,
 		Host:            endpoint.Host,
 		Port:            endpoint.Port,
 		Secure:          endpoint.Secure,
 		SslVerify:       !tls.InsecureSkipVerify,
 	}, creds, nil
+}
+
+// medusaPrefix flattens path, the directory the runtime assigns to a storage
+// entry, into the single folder Medusa writes under. Medusa refuses a prefix
+// containing "/" and parses object keys assuming the prefix is one segment,
+// so it cannot write under a nested path. "_" cannot occur in a namespace,
+// instance, UID or BackupStorage name, so distinct entries keep distinct
+// prefixes even when the storage's own prefix contains "_".
+func medusaPrefix(path string) string {
+	return strings.ReplaceAll(path, "/", "_")
 }
 
 // syncMedusaCredentials renders the BackupStorage's key pair into the AWS
