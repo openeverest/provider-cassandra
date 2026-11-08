@@ -4,5 +4,9 @@ metadata:
   name: test-admission-other-provider
 spec:
   executionMode: ProviderManaged
-  supportedProviders:
-    - provider-percona-xtradb-cluster
+  providerManaged:
+    providerRef:
+      name: provider-percona-xtradb-cluster
+  backupStorageClasses:
+    - name: s3
+      authModes: [AccessKey]

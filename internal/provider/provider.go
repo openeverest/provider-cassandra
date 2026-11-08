@@ -23,6 +23,7 @@ import (
 	corev1alpha1 "github.com/openeverest/openeverest/v2/api/core/v1alpha1"
 	"github.com/openeverest/openeverest/v2/provider-runtime/controller"
 
+	"github.com/openeverest/provider-cassandra/definition/backupclasses"
 	"github.com/openeverest/provider-cassandra/definition/components"
 	"github.com/openeverest/provider-cassandra/internal/common"
 )
@@ -91,7 +92,7 @@ type Provider struct {
 
 // New creates a new Provider instance.
 func New() *Provider {
-	return &Provider{
+	p := &Provider{
 		BaseProvider: controller.BaseProvider{
 			ProviderName: common.ProviderName,
 			SchemeFuncs: []func(*runtime.Scheme) error{
@@ -117,6 +118,9 @@ func New() *Provider {
 			},
 		},
 	}
+	p.SetShippedBackupClasses(backupclasses.Shipped())
+
+	return p
 }
 
 // clusterHealthChanged passes K8ssandraCluster updates that change what

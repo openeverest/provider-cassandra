@@ -18,5 +18,6 @@ spec:
     - name: s3
       authModes:
         - AccessKey
-  supportedProviders:
-    - provider-cassandra
+  providerManaged:
+    providerRef:
+      name: provider-cassandra

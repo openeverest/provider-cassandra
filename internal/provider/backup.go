@@ -26,8 +26,10 @@ import (
 
 	backupv1alpha1 "github.com/openeverest/openeverest/v2/api/backup/v1alpha1"
 	commonv1alpha1 "github.com/openeverest/openeverest/v2/api/common/v1alpha1"
-	"github.com/openeverest/openeverest/v2/pkg/backupstorageclasses"
+	s3class "github.com/openeverest/openeverest/v2/backupstorageclasses/s3"
 	"github.com/openeverest/openeverest/v2/provider-runtime/controller"
+
+	"github.com/openeverest/provider-cassandra/definition/backupclasses"
 )
 
 // Compile-time interface checks.
@@ -35,9 +37,15 @@ var _ controller.BackupProvider = (*Provider)(nil)
 var _ controller.BackupWatcher = (*Provider)(nil)
 var _ controller.RestoreWatcher = (*Provider)(nil)
 
-// medusaCredentialsKey is the Secret key k8ssandra-operator mounts as
-// Medusa's AWS credentials file (/etc/medusa-secrets/credentials).
-const medusaCredentialsKey = "credentials"
+const (
+	// medusaCredentialsKey is the Secret key k8ssandra-operator mounts as
+	// Medusa's AWS credentials file (/etc/medusa-secrets/credentials).
+	medusaCredentialsKey = "credentials"
+
+	// backupClassName is the BackupClass the provider ships, defined in
+	// definition/backupclasses.
+	backupClassName = "medusa"
+)
 
 // buildMedusa configures Medusa on the cluster from the Instance's backup
 // storage, or returns nil when backups are disabled so the cluster is created
@@ -83,25 +91,25 @@ func buildMedusa(c *controller.Context) (medusa *medusaapi.MedusaClusterTemplate
 
 // medusaStorage renders a backup storage into Medusa's storage properties,
 // and returns the credentials Medusa must be given.
-func medusaStorage(c *controller.Context, s controller.ResolvedBackupStorage) (medusaapi.Storage, backupstorageclasses.S3Credentials, error) {
+func medusaStorage(c *controller.Context, s controller.ResolvedBackupStorage) (medusaapi.Storage, s3class.Credentials, error) {
 	s3, creds, err := c.BackupStorageS3(s.Storage)
 	if err != nil {
-		return medusaapi.Storage{}, backupstorageclasses.S3Credentials{}, err
+		return medusaapi.Storage{}, s3class.Credentials{}, err
 	}
 	endpoint, err := s3.Endpoint()
 	if err != nil {
-		return medusaapi.Storage{}, backupstorageclasses.S3Credentials{}, err
+		return medusaapi.Storage{}, s3class.Credentials{}, err
 	}
-	tls, err := c.BackupStorageTLS(s.Storage, controller.TLSSupport{SkipVerify: true})
+	tls, err := c.BackupStorageTLS(s.Storage, backupclasses.TLSSupport(backupClassName, s3class.ClassName))
 	if err != nil {
-		return medusaapi.Storage{}, backupstorageclasses.S3Credentials{}, err
+		return medusaapi.Storage{}, s3class.Credentials{}, err
 	}
 
 	storageProvider := "s3_compatible"
 	switch s3.EffectiveImplementation() {
-	case backupstorageclasses.S3ImplementationAWS:
+	case s3class.ImplementationAWS:
 		storageProvider = "s3"
-	case backupstorageclasses.S3ImplementationCeph:
+	case s3class.ImplementationCeph:
 		storageProvider = "s3_rgw"
 	}
 
@@ -122,7 +130,7 @@ func medusaStorage(c *controller.Context, s controller.ResolvedBackupStorage) (m
 // holding it. The BackupStorage Secret itself can't be mounted directly: it
 // carries AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY, while Medusa expects a
 // single "credentials" file.
-func syncMedusaCredentials(c *controller.Context, creds backupstorageclasses.S3Credentials) (string, error) {
+func syncMedusaCredentials(c *controller.Context, creds s3class.Credentials) (string, error) {
 	name := c.Name() + "-medusa-storage"
 	secret := &corev1.Secret{ObjectMeta: c.ObjectMeta(name)}
 	secret.Data = map[string][]byte{
