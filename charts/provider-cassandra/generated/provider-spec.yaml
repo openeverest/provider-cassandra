@@ -25,10 +25,22 @@ spec:
     engine:
       parametersSchema:
         openAPIV3Schema:
+          description: |-
+            CassandraParameters defines the parameters for cassandra components.
+            Add fields here when the cassandra component type needs parameters
+            beyond what the base Instance spec provides.
           properties:
             heapInitialSize:
+              description: |-
+                HeapInitialSize sets the JVM's initial heap size (-Xms) as a
+                Kubernetes quantity string, e.g. "1Gi". Left unset, k8ssandra-operator
+                auto-sizes the heap from the engine container's memory request/limit.
               type: string
             heapMaxSize:
+              description: |-
+                HeapMaxSize sets the JVM's max heap size (-Xmx) as a Kubernetes
+                quantity string, e.g. "1Gi". Left unset, k8ssandra-operator auto-sizes
+                the heap from the engine container's memory request/limit.
               type: string
           type: object
       type: cassandra

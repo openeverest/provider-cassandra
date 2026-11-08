@@ -1,0 +1,14 @@
+apiVersion: core.openeverest.io/v1alpha1
+kind: Instance
+metadata:
+  name: orders
+spec:
+  providerRef:
+    name: provider-cassandra
+  topology:
+    type: singleDatacenter
+  components:
+    engine:
+      replicas: 3
+      storage:
+        size: 10Gi

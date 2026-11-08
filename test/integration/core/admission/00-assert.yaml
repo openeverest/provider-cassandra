@@ -1,0 +1,15 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: provider-cassandra
+  namespace: provider-system
+status:
+  readyReplicas: 1
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata:
+  name: provider-cassandra.openeverest.io
+webhooks:
+  - name: instances.provider-cassandra.openeverest.io
+    failurePolicy: Ignore

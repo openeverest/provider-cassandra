@@ -1,0 +1,12 @@
+apiVersion: k8ssandra.io/v1alpha1
+kind: K8ssandraCluster
+metadata:
+  name: test-cass-admission
+spec:
+  cassandra:
+    config:
+      jvmOptions:
+        heap_initial_size: 512Mi
+        heap_max_size: 1Gi
+    datacenters:
+      - size: 3

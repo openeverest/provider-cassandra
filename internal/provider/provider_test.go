@@ -53,8 +53,7 @@ func engineWithParameters(t *testing.T, params components.CassandraParameters) c
 }
 
 // newTestInstance builds an Instance for tests that only need
-// spec.components and spec.topology; Validate and buildTelemetry read
-// nothing else.
+// spec.components and spec.topology; buildTelemetry reads nothing else.
 func newTestInstance(components map[string]corev1alpha1.ComponentSpec, topology *corev1alpha1.TopologySpec) *corev1alpha1.Instance {
 	return &corev1alpha1.Instance{
 		ObjectMeta: metav1.ObjectMeta{Name: "test-instance", Namespace: "default"},
@@ -66,7 +65,7 @@ func newTestInstance(components map[string]corev1alpha1.ComponentSpec, topology 
 }
 
 // newTestContext wraps instance in a Context with a nil client, valid only
-// for functions that don't touch the client (Validate, buildTelemetry).
+// for functions that don't touch the client (buildTelemetry).
 func newTestContext(instance *corev1alpha1.Instance) *controller.Context {
 	return controller.NewContext(context.Background(), nil, instance, common.ProviderName)
 }
@@ -375,8 +374,8 @@ func TestResolveJvmOptions(t *testing.T) {
 
 	t.Run("no parameters means no jvm options", func(t *testing.T) {
 		t.Parallel()
-		got, err := resolveJvmOptions(corev1alpha1.ComponentSpec{})
-		assert.NoError(t, err)
+		got, errs := resolveJvmOptions(corev1alpha1.ComponentSpec{})
+		assert.Empty(t, errs)
 		assert.Nil(t, got.InitialHeapSize)
 		assert.Nil(t, got.MaxHeapSize)
 	})
@@ -384,8 +383,8 @@ func TestResolveJvmOptions(t *testing.T) {
 	t.Run("empty heap fields mean no jvm options", func(t *testing.T) {
 		t.Parallel()
 		engine := engineWithParameters(t, components.CassandraParameters{})
-		got, err := resolveJvmOptions(engine)
-		assert.NoError(t, err)
+		got, errs := resolveJvmOptions(engine)
+		assert.Empty(t, errs)
 		assert.Nil(t, got.InitialHeapSize)
 		assert.Nil(t, got.MaxHeapSize)
 	})
@@ -396,8 +395,8 @@ func TestResolveJvmOptions(t *testing.T) {
 			HeapInitialSize: "1Gi",
 			HeapMaxSize:     "2Gi",
 		})
-		got, err := resolveJvmOptions(engine)
-		if assert.NoError(t, err) && assert.NotNil(t, got.InitialHeapSize) && assert.NotNil(t, got.MaxHeapSize) {
+		got, errs := resolveJvmOptions(engine)
+		if assert.Empty(t, errs) && assert.NotNil(t, got.InitialHeapSize) && assert.NotNil(t, got.MaxHeapSize) {
 			assert.Equal(t, resource.MustParse("1Gi"), *got.InitialHeapSize)
 			assert.Equal(t, resource.MustParse("2Gi"), *got.MaxHeapSize)
 		}
@@ -406,8 +405,8 @@ func TestResolveJvmOptions(t *testing.T) {
 	t.Run("only max heap size is accepted", func(t *testing.T) {
 		t.Parallel()
 		engine := engineWithParameters(t, components.CassandraParameters{HeapMaxSize: "4Gi"})
-		got, err := resolveJvmOptions(engine)
-		if assert.NoError(t, err) && assert.NotNil(t, got.MaxHeapSize) {
+		got, errs := resolveJvmOptions(engine)
+		if assert.Empty(t, errs) && assert.NotNil(t, got.MaxHeapSize) {
 			assert.Nil(t, got.InitialHeapSize)
 			assert.Equal(t, resource.MustParse("4Gi"), *got.MaxHeapSize)
 		}
@@ -416,9 +415,9 @@ func TestResolveJvmOptions(t *testing.T) {
 	t.Run("malformed heap size is rejected", func(t *testing.T) {
 		t.Parallel()
 		engine := engineWithParameters(t, components.CassandraParameters{HeapInitialSize: "not-a-quantity"})
-		_, err := resolveJvmOptions(engine)
-		if assert.Error(t, err) {
-			assert.Contains(t, err.Error(), "heapInitialSize")
+		_, errs := resolveJvmOptions(engine)
+		if assert.Len(t, errs, 1) {
+			assert.Equal(t, "spec.components[engine].parameters.heapInitialSize", errs[0].Field)
 		}
 	})
 
@@ -430,9 +429,10 @@ func TestResolveJvmOptions(t *testing.T) {
 			HeapInitialSize: "2Gi",
 			HeapMaxSize:     "1Gi",
 		})
-		_, err := resolveJvmOptions(engine)
-		if assert.Error(t, err) {
-			assert.Contains(t, err.Error(), "must not exceed")
+		_, errs := resolveJvmOptions(engine)
+		if assert.Len(t, errs, 1) {
+			assert.Equal(t, "spec.components[engine].parameters.heapInitialSize", errs[0].Field)
+			assert.Contains(t, errs[0].Detail, "must not exceed")
 		}
 	})
 
@@ -442,8 +442,8 @@ func TestResolveJvmOptions(t *testing.T) {
 			HeapInitialSize: "1Gi",
 			HeapMaxSize:     "1Gi",
 		})
-		_, err := resolveJvmOptions(engine)
-		assert.NoError(t, err)
+		_, errs := resolveJvmOptions(engine)
+		assert.Empty(t, errs)
 	})
 }
 
@@ -464,91 +464,6 @@ func TestBuildCassandraConfig(t *testing.T) {
 			assert.Nil(t, got.JvmOptions.InitialHeapSize)
 		}
 	})
-}
-
-func TestValidate(t *testing.T) {
-	t.Parallel()
-
-	p := &Provider{}
-	replicas := func(n int32) *int32 { return &n }
-	withEngine := func(engine corev1alpha1.ComponentSpec) map[string]corev1alpha1.ComponentSpec {
-		return map[string]corev1alpha1.ComponentSpec{common.ComponentEngine: engine}
-	}
-
-	tests := map[string]struct {
-		components map[string]corev1alpha1.ComponentSpec
-		topology   *corev1alpha1.TopologySpec
-		wantErr    string
-	}{
-		"missing engine component is rejected": {
-			components: map[string]corev1alpha1.ComponentSpec{},
-			wantErr:    `"engine" component is required`,
-		},
-		"zero replicas is rejected": {
-			components: withEngine(corev1alpha1.ComponentSpec{Replicas: replicas(0)}),
-			wantErr:    `"engine" replicas must be at least 1`,
-		},
-		"nil replicas is accepted": {
-			components: withEngine(corev1alpha1.ComponentSpec{}),
-		},
-		"one replica is accepted": {
-			components: withEngine(corev1alpha1.ComponentSpec{Replicas: replicas(1)}),
-		},
-		"nil topology is accepted": {
-			components: withEngine(corev1alpha1.ComponentSpec{}),
-			topology:   nil,
-		},
-		"empty topology type is accepted": {
-			components: withEngine(corev1alpha1.ComponentSpec{}),
-			topology:   &corev1alpha1.TopologySpec{},
-		},
-		"singleDatacenter topology is accepted": {
-			components: withEngine(corev1alpha1.ComponentSpec{}),
-			topology:   &corev1alpha1.TopologySpec{Type: common.TopologySingleDatacenter},
-		},
-		// Regression test: topology.type used to be entirely unchecked, so
-		// any value -- including one the provider doesn't support -- was
-		// silently accepted and treated identically to singleDatacenter.
-		"unsupported topology is rejected": {
-			components: withEngine(corev1alpha1.ComponentSpec{}),
-			topology:   &corev1alpha1.TopologySpec{Type: "multiDatacenter"},
-			wantErr:    `unsupported topology "multiDatacenter"`,
-		},
-		"valid heap sizes are accepted": {
-			components: withEngine(engineWithParameters(t, components.CassandraParameters{
-				HeapInitialSize: "1Gi",
-				HeapMaxSize:     "2Gi",
-			})),
-		},
-		"malformed heap size is rejected": {
-			components: withEngine(engineWithParameters(t, components.CassandraParameters{
-				HeapMaxSize: "not-a-quantity",
-			})),
-			wantErr: `"engine" heapMaxSize`,
-		},
-		"heapInitialSize exceeding heapMaxSize is rejected": {
-			components: withEngine(engineWithParameters(t, components.CassandraParameters{
-				HeapInitialSize: "2Gi",
-				HeapMaxSize:     "1Gi",
-			})),
-			wantErr: "must not exceed",
-		},
-	}
-
-	for name, tc := range tests {
-		t.Run(name, func(t *testing.T) {
-			t.Parallel()
-			instance := newTestInstance(tc.components, tc.topology)
-			err := p.Validate(newTestContext(instance))
-			if tc.wantErr == "" {
-				assert.NoError(t, err)
-				return
-			}
-			if assert.Error(t, err) {
-				assert.Contains(t, err.Error(), tc.wantErr)
-			}
-		})
-	}
 }
 
 func TestBuildConnectionDetails(t *testing.T) {
