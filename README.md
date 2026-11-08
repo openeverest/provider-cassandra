@@ -49,6 +49,7 @@ lifecycle work is delegated to the operator.
 
 | provider-cassandra | OpenEverest | k8ssandra-operator | Kubernetes |
 |---|---|---|---|
+| `0.2.x` | `2.0.0-dev.5` | `1.32.x` | `1.30` – `1.34` |
 | `0.1.x` | `2.0.0-dev.1` | `1.32.x` | `1.30` – `1.34` |
 
 ## Capabilities

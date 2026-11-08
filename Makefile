@@ -7,7 +7,7 @@ $(LOCALBIN):
 CONTAINER_TOOL ?= docker
 
 # OpenEverest branch to use for OpenEverest CRD installation.
-OPENEVEREST_BRANCH ?= release-2.0
+OPENEVEREST_BRANCH ?= backup/storage-reshape
 
 # Image URL to use for building/pushing image targets
 IMG ?= ghcr.io/openeverest/provider-cassandra-dev:latest
@@ -91,11 +91,11 @@ generate: manifests helm-sync-rbac ## Run all code generation (RBAC + Helm sync 
 .PHONY: verify
 verify: ## Verify that generated files are up-to-date (for CI).
 	@$(MAKE) generate
-	@if git diff --quiet -- config/ $(CHART_DIR)/generated/; then \
+	@if git diff --quiet -- config/ definition/ $(CHART_DIR)/generated/; then \
 		echo "Generated files are up-to-date."; \
 	else \
 		echo "ERROR: Generated files are out of date. Run 'make generate' and commit the changes."; \
-		git diff -- config/ $(CHART_DIR)/generated/; \
+		git diff -- config/ definition/ $(CHART_DIR)/generated/; \
 		exit 1; \
 	fi
 
@@ -192,6 +192,9 @@ install-crds: helm-deps ## Install OpenEverest CRDs and the k8ssandra-operator C
 	kubectl apply -f https://raw.githubusercontent.com/openeverest/openeverest/$(OPENEVEREST_BRANCH)/config/crd/bases/backup.openeverest.io_backups.yaml
 	kubectl apply -f https://raw.githubusercontent.com/openeverest/openeverest/$(OPENEVEREST_BRANCH)/config/crd/bases/backup.openeverest.io_restores.yaml
 	kubectl apply -f https://raw.githubusercontent.com/openeverest/openeverest/$(OPENEVEREST_BRANCH)/config/crd/bases/backup.openeverest.io_backupstorages.yaml
+	kubectl apply -f https://raw.githubusercontent.com/openeverest/openeverest/$(OPENEVEREST_BRANCH)/config/crd/bases/backup.openeverest.io_backupstorageclasses.yaml
+	kubectl wait --for condition=established --timeout=30s crd/backupstorageclasses.backup.openeverest.io
+	kubectl apply -f https://raw.githubusercontent.com/openeverest/openeverest/$(OPENEVEREST_BRANCH)/config/backupstorageclasses/s3.yaml
 	@rm -rf $(OPERATOR_CHART_DIR) && mkdir -p $(OPERATOR_CHART_DIR)
 	tar -xzf $(CHART_DIR)/charts/k8ssandra-operator-*.tgz -C $(OPERATOR_CHART_DIR)
 	find $(OPERATOR_CHART_DIR) -path '*/crds/*.yaml' -exec kubectl apply --server-side -f {} \;

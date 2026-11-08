@@ -14,5 +14,10 @@ metadata:
   name: medusa
 spec:
   executionMode: ProviderManaged
-  supportedProviders:
-    - provider-cassandra
+  backupStorageClasses:
+    - name: s3
+      authModes:
+        - AccessKey
+  providerManaged:
+    providerRef:
+      name: provider-cassandra
