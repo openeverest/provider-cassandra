@@ -1,0 +1,30 @@
+# k8ssandra-operator is pinned twice: as a Go module (its API types, in go.mod)
+# and as the bundled Helm subchart (charts/provider-cassandra/Chart.yaml). Both are
+# placed in one multi-ecosystem group so a new operator release arrives as a
+# single PR that bumps them together. cass-operator is not tracked on its own: it
+# ships inside the k8ssandra-operator chart and must follow that chart's version.
+version: 2
+
+multi-ecosystem-groups:
+  k8ssandra-operator:
+    schedule:
+      interval: "daily"
+    labels:
+      - "dependencies"
+
+updates:
+  - package-ecosystem: "gomod"
+    directory: "/"
+    allow:
+      - dependency-name: "github.com/k8ssandra/k8ssandra-operator"
+    patterns:
+      - "github.com/k8ssandra/k8ssandra-operator"
+    multi-ecosystem-group: "k8ssandra-operator"
+
+  - package-ecosystem: "helm"
+    directory: "/charts/provider-cassandra"
+    allow:
+      - dependency-name: "k8ssandra-operator"
+    patterns:
+      - "k8ssandra-operator"
+    multi-ecosystem-group: "k8ssandra-operator"
