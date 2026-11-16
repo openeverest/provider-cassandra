@@ -219,6 +219,8 @@ openeverest-checkout: ## Check out openeverest/openeverest at OPENEVEREST_REF in
 install-crds: helm-deps ## Install OpenEverest CRDs and the k8ssandra-operator CRDs (from the pinned chart dependency) into the cluster.
 	go mod download github.com/openeverest/openeverest/v2
 	kubectl apply --server-side --force-conflicts -f "$$(go list -m -f '{{.Dir}}' github.com/openeverest/openeverest/v2)/config/crd/bases"
+	kubectl wait --for condition=established --timeout=30s crd/backupstorageclasses.backup.openeverest.io
+	kubectl apply -f "$$(go list -m -f '{{.Dir}}' github.com/openeverest/openeverest/v2)/config/backupstorageclasses/s3.yaml"
 	@rm -rf $(OPERATOR_CHART_DIR) && mkdir -p $(OPERATOR_CHART_DIR)
 	tar -xzf $(CHART_DIR)/charts/k8ssandra-operator-*.tgz -C $(OPERATOR_CHART_DIR)
 	find $(OPERATOR_CHART_DIR) -path '*/crds/*.yaml' -exec kubectl apply --server-side -f {} \;
