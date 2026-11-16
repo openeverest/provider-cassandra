@@ -6,8 +6,11 @@ $(LOCALBIN):
 # CONTAINER_TOOL defines the container tool to be used for building images.
 CONTAINER_TOOL ?= docker
 
-# OpenEverest branch to use for OpenEverest CRD installation.
-OPENEVEREST_BRANCH ?= release-2.0
+# Commit of openeverest/openeverest pinned in go.mod (a tag or a pseudo-version).
+# CI builds the OpenEverest controller from it. Override it (e.g.
+# OPENEVEREST_REF=main) to build against another core ref.
+OPENEVEREST_REF ?= $(shell sed -n 's/.*"Hash":"\([0-9a-f]*\)".*/\1/p' \
+	"$$(go mod download -json github.com/openeverest/openeverest/v2 | sed -n 's/.*"Info": "\(.*\)",/\1/p')")
 
 # Image URL to use for building/pushing image targets
 IMG ?= ghcr.io/openeverest/provider-cassandra-dev:latest
@@ -182,16 +185,15 @@ load-image: ## Import the provider image (IMG) into the k3d cluster.
 load-openeverest-controller-image: ## Import the OpenEverest controller image into the k3d cluster.
 	k3d image import ${OPENEVEREST_CONTROLLER_IMG} -c ${K3D_CLUSTER_NAME}
 
+.PHONY: openeverest-ref
+openeverest-ref: ## Print the openeverest/openeverest ref to build the OpenEverest controller from (OPENEVEREST_REF).
+	@test -n "$(OPENEVEREST_REF)" || { echo "cannot resolve the openeverest/openeverest commit pinned in go.mod" >&2; exit 1; }
+	@echo $(OPENEVEREST_REF)
+
 .PHONY: install-crds
 install-crds: helm-deps ## Install OpenEverest CRDs and the k8ssandra-operator CRDs (from the pinned chart dependency) into the cluster.
-	kubectl apply -f https://raw.githubusercontent.com/openeverest/openeverest/$(OPENEVEREST_BRANCH)/config/crd/bases/core.openeverest.io_providers.yaml
-	kubectl apply -f https://raw.githubusercontent.com/openeverest/openeverest/$(OPENEVEREST_BRANCH)/config/crd/bases/core.openeverest.io_instances.yaml
-	kubectl apply -f https://raw.githubusercontent.com/openeverest/openeverest/$(OPENEVEREST_BRANCH)/config/crd/bases/core.openeverest.io_instancepresets.yaml
-	kubectl apply -f https://raw.githubusercontent.com/openeverest/openeverest/$(OPENEVEREST_BRANCH)/config/crd/bases/monitoring.openeverest.io_monitoringconfigs.yaml
-	kubectl apply -f https://raw.githubusercontent.com/openeverest/openeverest/$(OPENEVEREST_BRANCH)/config/crd/bases/backup.openeverest.io_backupclasses.yaml
-	kubectl apply -f https://raw.githubusercontent.com/openeverest/openeverest/$(OPENEVEREST_BRANCH)/config/crd/bases/backup.openeverest.io_backups.yaml
-	kubectl apply -f https://raw.githubusercontent.com/openeverest/openeverest/$(OPENEVEREST_BRANCH)/config/crd/bases/backup.openeverest.io_restores.yaml
-	kubectl apply -f https://raw.githubusercontent.com/openeverest/openeverest/$(OPENEVEREST_BRANCH)/config/crd/bases/backup.openeverest.io_backupstorages.yaml
+	go mod download github.com/openeverest/openeverest/v2
+	kubectl apply --server-side --force-conflicts -f "$$(go list -m -f '{{.Dir}}' github.com/openeverest/openeverest/v2)/config/crd/bases"
 	@rm -rf $(OPERATOR_CHART_DIR) && mkdir -p $(OPERATOR_CHART_DIR)
 	tar -xzf $(CHART_DIR)/charts/k8ssandra-operator-*.tgz -C $(OPERATOR_CHART_DIR)
 	find $(OPERATOR_CHART_DIR) -path '*/crds/*.yaml' -exec kubectl apply --server-side -f {} \;
