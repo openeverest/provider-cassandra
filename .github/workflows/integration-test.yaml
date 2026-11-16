@@ -27,14 +27,17 @@ on:
         description: 'Human-readable suite name used for artifact naming'
         type: string
         required: true
+      openeverest_ref:
+        description: 'openeverest/openeverest ref (branch, tag or SHA) to build the OpenEverest controller from; empty uses the version pinned in go.mod'
+        type: string
+        required: false
+        default: ''
 
 permissions:
   contents: read
 
 env:
   IMG: provider-cassandra:ci
-  # Branch of openeverest/openeverest to build the platform from.
-  OPENEVEREST_BRANCH: main
 
 jobs:
   run:
@@ -46,11 +49,14 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Checkout OpenEverest
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-        with:
-          repository: openeverest/openeverest
-          ref: ${{ env.OPENEVEREST_BRANCH }}
-          path: _openeverest
+        env:
+          INPUT_REF: ${{ inputs.openeverest_ref }}
+        run: |
+          if [[ ! "${INPUT_REF}" =~ ^[A-Za-z0-9._/-]*$ ]]; then
+            echo "::error::invalid openeverest_ref: ${INPUT_REF}"
+            exit 1
+          fi
+          make openeverest-checkout ${INPUT_REF:+"OPENEVEREST_REF=${INPUT_REF}"}
 
       - name: Install Kubernetes tooling
         uses: ./.github/actions/setup-k8s-tools
@@ -82,8 +88,6 @@ jobs:
 
       - name: Install CRDs
         run: make install-crds
-        env:
-          OPENEVEREST_BRANCH: ${{ env.OPENEVEREST_BRANCH }}
 
       - name: Deploy provider
         run: make deploy-provider-ci
