@@ -34,3 +34,6 @@ Thumbs.db
 # Helm chart dependencies (downloaded by `helm dep up`)
 charts/provider-cassandra/charts/
 charts/provider-cassandra/Chart.lock
+
+# Local openeverest/openeverest checkout (make openeverest-checkout)
+_openeverest/
