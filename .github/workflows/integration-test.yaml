@@ -48,21 +48,15 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - name: Resolve OpenEverest ref
-        id: openeverest-ref
+      - name: Checkout OpenEverest
         env:
           INPUT_REF: ${{ inputs.openeverest_ref }}
         run: |
-          ref="${INPUT_REF:-$(make -s openeverest-ref)}"
-          echo "Building OpenEverest from openeverest/openeverest@${ref}"
-          echo "ref=${ref}" >> "$GITHUB_OUTPUT"
-
-      - name: Checkout OpenEverest
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-        with:
-          repository: openeverest/openeverest
-          ref: ${{ steps.openeverest-ref.outputs.ref }}
-          path: _openeverest
+          if [[ ! "${INPUT_REF}" =~ ^[A-Za-z0-9._/-]*$ ]]; then
+            echo "::error::invalid openeverest_ref: ${INPUT_REF}"
+            exit 1
+          fi
+          make openeverest-checkout ${INPUT_REF:+"OPENEVEREST_REF=${INPUT_REF}"}
 
       - name: Install Kubernetes tooling
         uses: ./.github/actions/setup-k8s-tools

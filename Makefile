@@ -12,6 +12,10 @@ CONTAINER_TOOL ?= docker
 OPENEVEREST_REF ?= $(shell sed -n 's/.*"Hash":"\([0-9a-f]*\)".*/\1/p' \
 	"$$(go mod download -json github.com/openeverest/openeverest/v2 | sed -n 's/.*"Info": "\(.*\)",/\1/p')")
 
+# Local checkout of openeverest/openeverest (at OPENEVEREST_REF) used to build
+# and deploy the OpenEverest controller for integration tests.
+OPENEVEREST_DIR ?= _openeverest
+
 # Image URL to use for building/pushing image targets
 IMG ?= ghcr.io/openeverest/provider-cassandra-dev:latest
 
@@ -189,6 +193,17 @@ load-openeverest-controller-image: ## Import the OpenEverest controller image in
 openeverest-ref: ## Print the openeverest/openeverest ref to build the OpenEverest controller from (OPENEVEREST_REF).
 	@test -n "$(OPENEVEREST_REF)" || { echo "cannot resolve the openeverest/openeverest commit pinned in go.mod" >&2; exit 1; }
 	@echo $(OPENEVEREST_REF)
+
+.PHONY: openeverest-checkout
+openeverest-checkout: ## Check out openeverest/openeverest at OPENEVEREST_REF into OPENEVEREST_DIR.
+	@ref="$(OPENEVEREST_REF)"; \
+	test -n "$$ref" || { echo "cannot resolve the openeverest/openeverest commit pinned in go.mod" >&2; exit 1; }; \
+	if [ ! -d "$(OPENEVEREST_DIR)/.git" ]; then \
+		git init -q "$(OPENEVEREST_DIR)"; \
+		git -C "$(OPENEVEREST_DIR)" remote add origin https://github.com/openeverest/openeverest; \
+	fi; \
+	git -C "$(OPENEVEREST_DIR)" fetch --depth 1 origin "$$ref"; \
+	git -C "$(OPENEVEREST_DIR)" checkout --force FETCH_HEAD
 
 .PHONY: install-crds
 install-crds: helm-deps ## Install OpenEverest CRDs and the k8ssandra-operator CRDs (from the pinned chart dependency) into the cluster.
