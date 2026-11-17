@@ -1,0 +1,167 @@
+# Upgrade preflight: a pre-upgrade hook Job that runs the new provider image
+# in preflight mode against the target catalog (delivered via the ConfigMap
+# below — the same generated provider-spec.yaml this release applies) and the
+# live Instances, then applies the bundled operator's CRDs. A non-zero exit
+# aborts the upgrade before any resource is applied. Runs only on
+# `helm upgrade`, never on install (Helm installs the CRDs then).
+#
+# It replaces the operator chart's own CRD upgrader job
+# (operator.disableCrdUpgraderJob), which looks its chart up by name and gets
+# the dependency alias instead.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "provider-cassandra.fullname" . }}-preflight
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "provider-cassandra.labels" . | nindent 4 }}
+  annotations:
+    helm.sh/hook: pre-upgrade
+    helm.sh/hook-weight: "-5"
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+data:
+  provider-spec.yaml: |
+{{ .Files.Get "generated/provider-spec.yaml" | indent 4 }}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "provider-cassandra.fullname" . }}-preflight
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "provider-cassandra.labels" . | nindent 4 }}
+  annotations:
+    helm.sh/hook: pre-upgrade
+    helm.sh/hook-weight: "-5"
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+---
+# Hook-scoped RBAC: the preflight reads the installed Provider and the
+# Instances it manages. Once it passes, the job applies the bundled operator's
+# CRDs, which Helm does not upgrade for a chart dependency. An operator that is
+# managed outside this chart keeps its own CRDs.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "provider-cassandra.fullname" . }}-preflight
+  labels:
+    {{- include "provider-cassandra.labels" . | nindent 4 }}
+  annotations:
+    helm.sh/hook: pre-upgrade
+    helm.sh/hook-weight: "-5"
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+rules:
+  - apiGroups: ["core.openeverest.io"]
+    resources: ["providers", "instances"]
+    verbs: ["get", "list"]
+  {{- if .Values.operator.enabled }}
+  - apiGroups: ["apiextensions.k8s.io"]
+    resources: ["customresourcedefinitions"]
+    verbs: ["create"]
+  # A server-side apply needs patch even to create a CRD, so every CRD of
+  # internal/operatorcrds/crd.yaml is named here.
+  - apiGroups: ["apiextensions.k8s.io"]
+    resources: ["customresourcedefinitions"]
+    resourceNames:
+      - cassandradatacenters.cassandra.datastax.com
+      - cassandratasks.control.k8ssandra.io
+      - clientconfigs.config.k8ssandra.io
+      - k8ssandraclusters.k8ssandra.io
+      - k8ssandratasks.control.k8ssandra.io
+      - medusabackupjobs.medusa.k8ssandra.io
+      - medusabackups.medusa.k8ssandra.io
+      - medusabackupschedules.medusa.k8ssandra.io
+      - medusaconfigurations.medusa.k8ssandra.io
+      - medusarestorejobs.medusa.k8ssandra.io
+      - medusatasks.medusa.k8ssandra.io
+      - reapers.reaper.k8ssandra.io
+      - replicatedsecrets.replication.k8ssandra.io
+      - scheduledtasks.control.k8ssandra.io
+      - stargates.stargate.k8ssandra.io
+    verbs: ["get", "patch"]
+  {{- end }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "provider-cassandra.fullname" . }}-preflight
+  labels:
+    {{- include "provider-cassandra.labels" . | nindent 4 }}
+  annotations:
+    helm.sh/hook: pre-upgrade
+    helm.sh/hook-weight: "-5"
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "provider-cassandra.fullname" . }}-preflight
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "provider-cassandra.fullname" . }}-preflight
+    namespace: {{ .Release.Namespace }}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "provider-cassandra.fullname" . }}-preflight
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "provider-cassandra.labels" . | nindent 4 }}
+  annotations:
+    helm.sh/hook: pre-upgrade
+    helm.sh/hook-weight: "0"
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 0
+  # Bound unschedulable/unpullable pods so a broken hook fails the upgrade
+  # deterministically instead of hanging until the Helm timeout.
+  activeDeadlineSeconds: 300
+  template:
+    metadata:
+      labels:
+        # Deliberately not the shared labels helper: it embeds the Service's
+        # selector labels, which must not match a pod that serves nothing.
+        helm.sh/chart: {{ include "provider-cassandra.chart" . }}
+        app.kubernetes.io/managed-by: {{ .Release.Service }}
+        app.kubernetes.io/component: preflight
+    spec:
+      restartPolicy: Never
+      serviceAccountName: {{ include "provider-cassandra.fullname" . }}-preflight
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: preflight
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: {{ include "provider-cassandra.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+            - --preflight-spec=/preflight/provider-spec.yaml
+            {{- if .Values.operator.enabled }}
+            - --apply-operator-crds
+            {{- end }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: target-spec
+              mountPath: /preflight
+              readOnly: true
+      volumes:
+        - name: target-spec
+          configMap:
+            name: {{ include "provider-cassandra.fullname" . }}-preflight
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

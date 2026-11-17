@@ -90,19 +90,29 @@ helm-sync-rbac: yq ## Sync generated RBAC rules into the Helm chart.
 	} > $(CHART_DIR)/generated/rbac-rules.yaml
 	@echo "Done."
 
+# The pre-upgrade hook applies these; Helm never upgrades the CRDs of a chart
+# dependency. They come from the chart, not from go.mod, because the chart is
+# what gets deployed.
+.PHONY: operator-crds
+operator-crds: helm-deps ## Copy the CRDs of the k8ssandra-operator chart pinned in Chart.yaml.
+	@rm -rf $(OPERATOR_CHART_DIR) && mkdir -p $(OPERATOR_CHART_DIR)
+	@tar -xzf $(CHART_DIR)/charts/k8ssandra-operator-*.tgz -C $(OPERATOR_CHART_DIR)
+	@find $(OPERATOR_CHART_DIR) -path '*/crds/*.yaml' | LC_ALL=C sort | while read -r f; do echo '---'; cat "$$f"; done > internal/operatorcrds/crd.yaml
+
 .PHONY: generate
-generate: manifests helm-sync-rbac ## Run all code generation (RBAC + Helm sync + provider spec from definition/).
+generate: manifests operator-crds helm-sync-rbac ## Run all code generation (RBAC + operator CRDs + Helm sync + provider spec from definition/).
 	go generate ./...
 	@echo "All generation complete."
 
 .PHONY: verify
 verify: ## Verify that generated files are up-to-date (for CI).
 	@$(MAKE) generate
-	@if git diff --quiet -- config/ $(CHART_DIR)/generated/; then \
+	@if git diff --quiet -- config/ internal/operatorcrds/ $(CHART_DIR)/generated/; then \
 		echo "Generated files are up-to-date."; \
 	else \
 		echo "ERROR: Generated files are out of date. Run 'make generate' and commit the changes."; \
 		git diff -- config/ $(CHART_DIR)/generated/; \
+		git diff --stat -- internal/operatorcrds/; \
 		exit 1; \
 	fi
 
