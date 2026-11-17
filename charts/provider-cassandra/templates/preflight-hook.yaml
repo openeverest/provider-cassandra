@@ -76,7 +76,6 @@ rules:
       - reapers.reaper.k8ssandra.io
       - replicatedsecrets.replication.k8ssandra.io
       - scheduledtasks.control.k8ssandra.io
-      - stargates.stargate.k8ssandra.io
     verbs: ["get", "patch"]
   {{- end }}
 ---

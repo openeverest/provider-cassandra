@@ -19,6 +19,6 @@ maintainers:
 dependencies:
   - name: k8ssandra-operator
     alias: operator
-    version: "1.32.6"
+    version: "1.34.0"
     repository: https://helm.k8ssandra.io/stable
     condition: operator.enabled
