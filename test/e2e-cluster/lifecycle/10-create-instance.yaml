@@ -1,4 +1,4 @@
-# Sized so four nodes (during scale-out) fit a GitHub-hosted runner.
+# Sized so four nodes (during scale-out) and Reaper fit a GitHub-hosted runner.
 apiVersion: core.openeverest.io/v1alpha1
 kind: Instance
 metadata:
@@ -23,3 +23,5 @@ spec:
       parameters:
         heapInitialSize: 768Mi
         heapMaxSize: 768Mi
+    repair:
+      type: reaper

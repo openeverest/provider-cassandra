@@ -74,7 +74,7 @@ Progress: [#26](https://github.com/openeverest/provider-cassandra/issues/26) ·
 
 | Item | Upstream mapping | Notes |
 |---|---|---|
-| **Anti-entropy repairs (Reaper)** | `spec.reaper`, `reaper.autoScheduling` | **Highest priority.** Without regular repairs within `gc_grace_seconds` (10 days by default), deleted data can come back. Add an optional `repair` component, with auto-scheduling on by default (`INCREMENTAL` on 4.1+/5.0, otherwise `REGULAR`). Store Reaper state in Cassandra (`storageType: cassandra`) |
+| **Anti-entropy repairs (Reaper)** | `spec.reaper`, `reaper.autoScheduling` | Done: the optional `repair` component runs Reaper with auto-scheduling (incremental on Cassandra 4+) and its state in Cassandra. Opt-in, with a warning for Instances without it; a default-on switch in the UI needs core support |
 | **Rack / zone-aware placement** | `datacenters[].racks[]` (name + node affinity on `topology.kubernetes.io/zone`) | Topology parameter for 1 or 3 racks, one per zone. Cassandra then places replicas in different racks. Rack layout cannot change after creation |
 | Curated Cassandra configuration | `cassandraConfig.cassandraYaml` | Validated allow-list: `num_tokens`, `concurrent_reads/writes`, `compaction_throughput`, `stream_throughput_outbound`, `read/write_request_timeout`, `gc_grace_seconds` guidance, and more |
 | Extended JVM tuning | `cassandraConfig.jvmOptions` (GC settings, `mgmtAPIHeap`) | A GC preset (G1 default, or ZGC on 5.0) instead of raw flags |
@@ -143,7 +143,7 @@ A summary of which k8ssandra-operator (`1.32.x`) capabilities the provider cover
 | Medusa GCS / Azure / IBM | ✅ | ⏸ needs core |
 | Restore into a new cluster | ✅ | 🗓 0.3 |
 | Medusa tuning (full/diff, bandwidth, chunking) | ✅ | 🗓 0.3 |
-| Reaper repairs + auto-scheduling | ✅ | 🗓 0.3 |
+| Reaper repairs + auto-scheduling | ✅ | ✅ 0.3 |
 | Prometheus ServiceMonitor | ✅ | 🚧 0.2 |
 | Vector telemetry | ✅ | 🗓 Later |
 | `K8ssandraTask` operations | ✅ | ⏸ needs core |

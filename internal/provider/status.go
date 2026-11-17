@@ -134,6 +134,14 @@ func clusterStatus(kc *k8ssandraapi.K8ssandraCluster) controller.Status {
 	if nodesNotReady {
 		return controller.Updating(messageNodesNotReady)
 	}
+	// Cassandra serves clients without Reaper, but nothing repairs it.
+	if kc.Spec.Reaper != nil {
+		for _, name := range names {
+			if !kc.Status.Datacenters[name].Reaper.IsReady() {
+				return controller.Updating("Waiting for Reaper to become ready")
+			}
+		}
+	}
 	return controller.Ready()
 }
 

@@ -31,3 +31,7 @@ spec:
       # parameters:
       #   heapInitialSize: 1Gi
       #   heapMaxSize: 1Gi
+    # Reaper repairs every keyspace on a schedule. Without repairs, deleted
+    # data can reappear once gc_grace_seconds has passed.
+    repair:
+      type: reaper

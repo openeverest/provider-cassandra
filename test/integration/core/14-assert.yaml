@@ -1,0 +1,33 @@
+apiVersion: k8ssandra.io/v1alpha1
+kind: K8ssandraCluster
+metadata:
+  name: cass-core
+spec:
+  reaper:
+    containerImage:
+      repository: thelastpickle
+      name: cassandra-reaper
+      tag: 5.1.0
+    autoScheduling:
+      enabled: true
+      repairType: AUTO
+    httpManagement:
+      enabled: true
+    # Half of the default 1Gi memory limit.
+    heapSize: 512Mi
+    resources:
+      limits:
+        memory: 1Gi
+    metadata:
+      pods:
+        labels:
+          core.openeverest.io/component: repair
+          core.openeverest.io/instance: cass-core
+---
+apiVersion: core.openeverest.io/v1alpha1
+kind: Instance
+metadata:
+  name: cass-core
+status:
+  phase: Updating
+  message: Waiting for Reaper to become ready

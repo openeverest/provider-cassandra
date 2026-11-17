@@ -10,8 +10,8 @@ metadata:
 spec:
   description: |
     Create an Instance and check the generated K8ssandraCluster, simulate the
-    cluster becoming ready and check the connection details, scale, resize and
-    upgrade it, then delete it.
+    cluster becoming ready and check the connection details, add and remove
+    repairs, scale, resize and upgrade it, then delete it.
 
   catch:
     - script:
@@ -60,6 +60,26 @@ spec:
             content: |
               kubectl -n $NAMESPACE patch k8ssandracluster/cass-core --subresource status --type merge \
                 --patch-file ${PROVIDER_ROOT_PATH}/test/integration/core/13-settled-status.yaml
+        - assert:
+            file: 11-assert.yaml
+
+    # The repair component deploys Reaper, and the Instance waits for it.
+    - name: repairs
+      try:
+        - patch:
+            file: 14-add-repair.yaml
+        - assert:
+            file: 14-assert.yaml
+        - script:
+            content: |
+              kubectl -n $NAMESPACE patch k8ssandracluster/cass-core --subresource status --type merge \
+                --patch-file ${PROVIDER_ROOT_PATH}/test/integration/core/15-reaper-ready-status.yaml
+        - assert:
+            file: 15-assert.yaml
+        - patch:
+            file: 16-remove-repair.yaml
+        - assert:
+            file: 16-assert.yaml
         - assert:
             file: 11-assert.yaml
 

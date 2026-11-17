@@ -1,0 +1,7 @@
+apiVersion: core.openeverest.io/v1alpha1
+kind: Instance
+metadata:
+  name: cass-core
+status:
+  phase: Ready
+  (components[?name == 'repair'] | [0].selector): core.openeverest.io/component=repair,core.openeverest.io/instance=cass-core

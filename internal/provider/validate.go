@@ -39,5 +39,11 @@ func (p *Provider) Validate(in controller.ValidationInput) controller.Validation
 	_, jvmErrs := resolveJvmOptions(engine)
 	errs = append(errs, jvmErrs...)
 	errs = append(errs, validateScheduling(enginePath.Child("schedulingPolicy"), engine.SchedulingPolicy)...)
-	return controller.ValidationResult{Errors: errs}
+	errs = append(errs, validateRepair(in.Instance)...)
+
+	var warnings []string
+	if _, ok := in.Instance.Spec.Components[common.ComponentRepair]; !ok {
+		warnings = append(warnings, warningNoRepair)
+	}
+	return controller.ValidationResult{Errors: errs, Warnings: warnings}
 }
