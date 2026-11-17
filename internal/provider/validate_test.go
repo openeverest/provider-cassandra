@@ -90,6 +90,33 @@ func TestValidate(t *testing.T) {
 			}),
 		},
 		{
+			name: "repair component",
+			mutate: func(in *corev1alpha1.Instance) {
+				in.Spec.Components[common.ComponentRepair] = corev1alpha1.ComponentSpec{
+					Type:    common.ComponentTypeReaper,
+					Image:   "registry.example.com/tlp/cassandra-reaper:5.1.0",
+					Version: "5.1.0",
+				}
+			},
+		},
+		{
+			name: "repair image with a digest",
+			mutate: func(in *corev1alpha1.Instance) {
+				in.Spec.Components[common.ComponentRepair] = corev1alpha1.ComponentSpec{Image: "tlp/cassandra-reaper@sha256:0123"}
+			},
+			want: []string{"spec.components[repair].image"},
+		},
+		{
+			name: "repair fields Reaper cannot take",
+			mutate: func(in *corev1alpha1.Instance) {
+				in.Spec.Components[common.ComponentRepair] = corev1alpha1.ComponentSpec{
+					Replicas:         new(int32(2)),
+					SchedulingPolicy: &commonv1alpha1.SchedulingPolicy{NodeSelector: map[string]string{"a": "b"}},
+				}
+			},
+			want: []string{"spec.components[repair].replicas", "spec.components[repair].schedulingPolicy.nodeSelector"},
+		},
+		{
 			name:   "unknown version",
 			mutate: func(in *corev1alpha1.Instance) { in.Spec.Version = "3.11" },
 			want:   []string{"spec.version"},
@@ -188,4 +215,21 @@ func TestValidate(t *testing.T) {
 			assert.Equal(t, tt.want, got, "errors: %v", res.Errors)
 		})
 	}
+}
+
+// Core never adds an optional component, so an Instance without repairs is
+// valid but gets told what it risks.
+func TestValidateWarnsWithoutRepair(t *testing.T) {
+	t.Parallel()
+	v := validationtest.New(t, New(), providerSpecPath)
+
+	in := validationtest.Load(t, singleDatacenterFixture)
+	res := v.Run(in, nil)
+	assert.Empty(t, res.Errors)
+	assert.Equal(t, []string{warningNoRepair}, res.Warnings)
+
+	in.Spec.Components[common.ComponentRepair] = corev1alpha1.ComponentSpec{}
+	res = v.Run(in, nil)
+	assert.Empty(t, res.Errors)
+	assert.Empty(t, res.Warnings)
 }

@@ -1,0 +1,8 @@
+status:
+  datacenters:
+    dc1-32dfcac1:
+      reaper:
+        progress: Running
+        conditions:
+          - type: Ready
+            status: "True"

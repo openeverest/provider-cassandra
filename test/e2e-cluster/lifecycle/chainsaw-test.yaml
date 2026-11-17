@@ -8,7 +8,8 @@ spec:
     Run a real Cassandra cluster through its lifecycle: create a three-node 4.1
     Instance and write data, upgrade to 5.0, scale out to four nodes and back
     to three, lose a node, resize, check the data survived every step and the
-    Instance phase followed along, then delete it and check nothing is left.
+    Instance phase followed along, check Reaper scheduled repairs and remove
+    it, then delete it and check nothing is left.
 
     It starts at three nodes because k8ssandra-operator raises system keyspace
     replication (capped at 3) without repairing, so growing a smaller cluster
@@ -109,6 +110,33 @@ spec:
             file: 50-resize.yaml
         - assert:
             timeout: 20m
+            file: 50-assert.yaml
+        - script:
+            content: *check-data
+
+    # Reaper looks for new keyspaces every ten minutes and schedules their
+    # repairs.
+    - name: repairs-scheduled
+      try:
+        - script:
+            timeout: 15m
+            content: |
+              for _ in $(seq 84); do
+                ${PROVIDER_ROOT_PATH}/test/e2e-cluster/cql.sh $NAMESPACE cass-lifecycle \
+                  "SELECT keyspace_name FROM reaper_db.repair_unit_v1;" | grep -qw e2e && exit 0
+                sleep 10
+              done
+              echo "Reaper did not schedule repairs for keyspace e2e" >&2
+              exit 1
+
+    # Reaper is a pod of its own, so removing it leaves Cassandra running.
+    - name: remove-repair
+      try:
+        - patch:
+            file: 55-remove-repair.yaml
+        - error:
+            file: 55-errors.yaml
+        - assert:
             file: 50-assert.yaml
         - script:
             content: *check-data

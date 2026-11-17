@@ -145,6 +145,12 @@ func (p *Provider) Sync(c *controller.Context) error {
 	}
 	kc.Spec.Medusa = medusa
 
+	reaper, err := buildReaper(c)
+	if err != nil {
+		return err
+	}
+	kc.Spec.Reaper = reaper
+
 	if err := c.Apply(kc); err != nil {
 		return err
 	}

@@ -26,6 +26,9 @@ const (
 	ComponentMonitoring     = "monitoring"
 	ComponentTypePrometheus = "prometheus"
 
+	ComponentRepair     = "repair"
+	ComponentTypeReaper = "reaper"
+
 	// TopologySingleDatacenter is the only topology this provider defines
 	// (see definition/topologies/singleDatacenter).
 	TopologySingleDatacenter = "singleDatacenter"

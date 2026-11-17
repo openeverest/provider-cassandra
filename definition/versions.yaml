@@ -24,6 +24,13 @@ componentTypes:
         versions:
             - version: "2.55.1"
               image: prom/prometheus:v2.55.1
+    # The version the bundled k8ssandra-operator ships. Unlike medusa, the
+    # provider applies this image.
+    reaper:
+        defaultVersion: "5.1.0"
+        versions:
+            - version: "5.1.0"
+              image: thelastpickle/cassandra-reaper:5.1.0
 
 # Version bundles — curated sets of component versions known to work together.
 # Users set spec.version on an Instance to select a bundle.
@@ -34,8 +41,10 @@ versions:
         engine: "5.0.4"
         backupAgent: "0.22.3"
         monitoring: "2.55.1"
+        repair: "5.1.0"
     - name: "4.1"
       components:
         engine: "4.1.9"
         backupAgent: "0.22.3"
         monitoring: "2.55.1"
+        repair: "5.1.0"

@@ -6,6 +6,7 @@ status:
   phase: Ready
   connectionSecretRef:
     name: cass-lifecycle-conn
+  (components[?name == 'repair'] | [0].readyReplicas): 1
 ---
 # cass-operator only applies a pod template change it has not marked observed,
 # and a change that lands in the middle of a reconcile is marked observed

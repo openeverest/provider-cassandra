@@ -19,6 +19,11 @@ spec:
       versions:
         - image: prom/prometheus:v2.55.1
           version: 2.55.1
+    reaper:
+      defaultVersion: 5.1.0
+      versions:
+        - image: thelastpickle/cassandra-reaper:5.1.0
+          version: 5.1.0
   components:
     backupAgent:
       type: medusa
@@ -46,6 +51,8 @@ spec:
       type: cassandra
     monitoring:
       type: prometheus
+    repair:
+      type: reaper
   defaultVersion: "5.0"
   release:
     version: 0.1.0
@@ -80,6 +87,19 @@ spec:
           supportedFields:
             openAPIV3Schema:
               properties: {}
+        repair:
+          optional: true
+          supportedFields:
+            openAPIV3Schema:
+              properties:
+                image: {}
+                resources: {}
+                schedulingPolicy:
+                  properties:
+                    affinity: {}
+                    tolerations: {}
+                type: {}
+                version: {}
   uiSchema:
     singleDatacenter:
       sections:
@@ -149,6 +169,30 @@ spec:
                 required: true
           description: Provide the information about the database version you want to use.
           label: Database Version
+        repairs:
+          components:
+            reaper:
+              components:
+                type:
+                  fieldParams:
+                    defaultValue: reaper
+                    label: Repair service
+                    options:
+                      - label: Cassandra Reaper
+                        value: reaper
+                    readOnly: true
+                  path: spec.components.repair.type
+                  uiType: select
+                  validation:
+                    required: true
+              description: Runs Cassandra Reaper next to the cluster. It schedules repairs for every non-system keyspace, incremental on Cassandra 4 and later.
+              groupType: toggleable
+              label: Scheduled repairs
+              uiType: group
+          componentsOrder:
+            - reaper
+          description: Without regular repairs, deleted data can reappear once gc_grace_seconds (10 days by default) has passed.
+          label: Repairs
         resources:
           components:
             nodes:
@@ -221,14 +265,17 @@ spec:
         - databaseVersion
         - resources
         - advanced
+        - repairs
   versions:
     - components:
         backupAgent: 0.22.3
         engine: 5.0.4
         monitoring: 2.55.1
+        repair: 5.1.0
       name: "5.0"
     - components:
         backupAgent: 0.22.3
         engine: 4.1.9
         monitoring: 2.55.1
+        repair: 5.1.0
       name: "4.1"

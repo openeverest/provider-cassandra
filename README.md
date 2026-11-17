@@ -63,6 +63,7 @@ provider itself is covered under [Installation](#installation).
 | Vertical scaling (CPU / memory) | ✅ | `spec.components.engine.resources` |
 | Version upgrades | ✅ | of the deployed Cassandra version — change `spec.version`; see [Versions](#versions) |
 | Monitoring | 🚧 | optional `monitoring` component (Prometheus) — wiring in progress |
+| Repairs | ✅ | optional `repair` component (Reaper); see [Repairs](#repairs) |
 
 Stateful workloads additionally report:
 
@@ -148,6 +149,8 @@ spec:
           memory: 4Gi
       storage:
         size: 25Gi
+    repair:
+      type: reaper
 ```
 
 Component names are defined by this provider — see [definition/provider.yaml](definition/provider.yaml).
@@ -176,6 +179,31 @@ Credentials are in the secret named by `.status.connection.credentialsSecretRef`
 `status.components` reports the ready and total `engine` pods. Medusa runs as their sidecar,
 so `backupAgent` has no entry of its own.
 
+## Repairs
+
+Cassandra needs every keyspace repaired within `gc_grace_seconds` (10 days by default),
+or deleted data can reappear. Add the `repair` component and the provider runs
+[Reaper](https://cassandra-reaper.io) next to the cluster:
+
+```yaml
+spec:
+  components:
+    repair:
+      type: reaper
+```
+
+- Reaper schedules repairs for every non-system keyspace, and picks up new keyspaces within
+  ten minutes. Repairs are incremental on Cassandra 4 and later.
+- It is one pod, with 100m CPU and 1Gi memory by default; set `resources` to change that. The
+  JVM heap is half the memory limit. Its state lives in the `reaper_db` keyspace of the
+  cluster it repairs.
+- `version`, `image`, `resources`, and the `tolerations` and `affinity` of
+  `schedulingPolicy` are supported. `image` needs a tag, not a digest.
+- Adding or removing the component does not restart Cassandra. Removing it leaves the
+  `reaper_db` keyspace in place.
+- The component is opt-in: an `Instance` without it is accepted with a warning. While Reaper
+  is not ready the `Instance` shows `Updating`.
+
 ## Topologies
 
 <!-- BEGIN GENERATED: topologies -->
@@ -184,7 +212,7 @@ so `backupAgent` has no entry of its own.
 | `singleDatacenter` | ✅ | A single Cassandra datacenter (`dc1`) built from the `engine` component |
 <!-- END GENERATED: topologies -->
 
-The `backupAgent` (Medusa) and `monitoring` (Prometheus) components are optional.
+The `backupAgent` (Medusa), `monitoring` (Prometheus) and `repair` (Reaper) components are optional.
 
 ## Versions
 

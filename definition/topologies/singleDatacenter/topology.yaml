@@ -1,7 +1,7 @@
 # SingleDatacenter topology definition.
 # Deploys a single Cassandra datacenter (one K8ssandraCluster with one
-# CassandraDatacenter). backupAgent (Medusa) and monitoring (Prometheus) are
-# optional add-ons.
+# CassandraDatacenter). backupAgent (Medusa), monitoring (Prometheus) and repair
+# (Reaper) are optional add-ons.
 #
 # config.components: which components are used and their defaults.
 # ui: rendering hints for the frontend form.
@@ -38,6 +38,21 @@ config:
             optional: true
             supportedFields:
                 properties: {}
+        # Reaper runs as its own pod and schedules repairs for every
+        # non-system keyspace. ReaperTemplate has no nodeSelector, schedulerName
+        # or topologySpreadConstraints.
+        repair:
+            optional: true
+            supportedFields:
+                properties:
+                    type: {}
+                    version: {}
+                    image: {}
+                    resources: {}
+                    schedulingPolicy:
+                        properties:
+                            tolerations: {}
+                            affinity: {}
 ui:
     sections:
         databaseVersion:
@@ -173,7 +188,34 @@ ui:
             componentsOrder:
                 - storageClass
                 - heapSize
+        repairs:
+            label: Repairs
+            description: Without regular repairs, deleted data can reappear once gc_grace_seconds (10 days by default) has passed.
+            components:
+                reaper:
+                    uiType: group
+                    groupType: toggleable
+                    label: Scheduled repairs
+                    description: Runs Cassandra Reaper next to the cluster. It schedules repairs for every non-system keyspace, incremental on Cassandra 4 and later.
+                    components:
+                        # Writes spec.components.repair.type so the toggle owns
+                        # it: switching off removes the whole repair component.
+                        type:
+                            uiType: select
+                            path: spec.components.repair.type
+                            fieldParams:
+                                label: Repair service
+                                defaultValue: reaper
+                                readOnly: true
+                                options:
+                                    - label: Cassandra Reaper
+                                      value: reaper
+                            validation:
+                                required: true
+            componentsOrder:
+                - reaper
     sectionsOrder:
         - databaseVersion
         - resources
         - advanced
+        - repairs

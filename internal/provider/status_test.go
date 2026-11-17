@@ -6,6 +6,7 @@ import (
 
 	cassdcapi "github.com/k8ssandra/cass-operator/apis/cassandra/v1beta1"
 	k8ssandraapi "github.com/k8ssandra/k8ssandra-operator/apis/k8ssandra/v1alpha1"
+	reaperapi "github.com/k8ssandra/k8ssandra-operator/apis/reaper/v1alpha1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
@@ -83,6 +84,22 @@ func TestClusterStatus(t *testing.T) {
 	noDatacenterStatus := initializedCluster(cassdcapi.ProgressReady)
 	noDatacenterStatus.Status.Datacenters = map[string]k8ssandraapi.K8ssandraStatus{"dc1": {}}
 
+	withReaper := func(status *reaperapi.ReaperStatus) *k8ssandraapi.K8ssandraCluster {
+		kc := initializedCluster(cassdcapi.ProgressReady, settled...)
+		kc.Spec.Reaper = &reaperapi.ReaperClusterTemplate{}
+		dc := kc.Status.Datacenters["dc1"]
+		dc.Reaper = status
+		kc.Status.Datacenters["dc1"] = dc
+		return kc
+	}
+	reaperReady := &reaperapi.ReaperStatus{}
+	reaperReady.SetReady()
+	reaperNotReady := &reaperapi.ReaperStatus{Progress: reaperapi.ReaperProgressConfiguring}
+	reaperNotReady.SetNotReady()
+	// A status left behind after the repair component is removed.
+	reaperRemoved := withReaper(reaperNotReady)
+	reaperRemoved.Spec.Reaper = nil
+
 	tests := map[string]struct {
 		cluster *k8ssandraapi.K8ssandraCluster
 		want    controller.Status
@@ -122,6 +139,10 @@ func TestClusterStatus(t *testing.T) {
 		"spec not observed yet": {staleStatus, controller.Updating("Applying changes")},
 		"no observedGeneration": {noObservedGeneration, controller.Ready()},
 		"no datacenter status":  {noDatacenterStatus, controller.Ready()},
+		"Reaper ready":          {withReaper(reaperReady), controller.Ready()},
+		"Reaper not ready":      {withReaper(reaperNotReady), controller.Updating("Waiting for Reaper to become ready")},
+		"Reaper not reported":   {withReaper(nil), controller.Updating("Waiting for Reaper to become ready")},
+		"Reaper removed":        {reaperRemoved, controller.Ready()},
 	}
 
 	for name, tc := range tests {
