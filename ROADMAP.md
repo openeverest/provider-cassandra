@@ -32,7 +32,7 @@ A single datacenter with one rack. See [README.md#capabilities](README.md#capabi
 | Medusa backups: on demand, scheduled, in-place restore, S3-compatible storage only | ✅ |
 | Retention (`retention`) | ⚠️ `count` only (`time` is rejected); applies to the whole cluster (highest value across schedules), not to each schedule |
 | Monitoring | 🚧 only sets `telemetry.prometheus.enabled` |
-| Status | only `CassandraInitialized` is checked, and no per-component status is reported |
+| Status | ✅ ready/total `engine` pods in `status.components`; the phase follows the datacenter's conditions |
 | Integration tests | 🚧 chainsaw skeleton; lifecycle steps are commented out |
 
 Gaps in the current code:
@@ -58,7 +58,7 @@ Progress: [milestone 0.2](https://github.com/openeverest/provider-cassandra/mile
 |---|---|---|
 | Enable end-to-end integration tests (create → ready → scale → backup → restore → delete) | — | Turn on the commented-out chainsaw steps. Run against a real operator, not one scaled to 0 |
 | Align the version catalog with the operator | `medusa.containerImage`, `cassandra.serverVersion` | Apply the bundle's Medusa image, or drop it from the catalog. Add current 4.1.x / 5.0.x patch releases |
-| Per-component status (`status.components`) | `CassandraDatacenter.status.nodeStatuses`, StatefulSet ready counts | Report ready/total pods for `engine`, and error/progress conditions beyond `CassandraInitialized` |
+| Per-component status (`status.components`) | `CassandraDatacenter.status.conditions`, pod readiness | Done: ready/total pods for `engine`; scaling, rollouts, resizes and recovering nodes show as `Updating`, a running restore as `Restoring`, a refused change as `Failed`. Medusa is a sidecar, so `backupAgent` has no entry |
 | Scheduling policy | `racks[].affinity`, `softPodAntiAffinity`, `tolerations` | Done for `components.engine.schedulingPolicy`: nodeSelector, tolerations and affinity. Pods prefer separate nodes by default; a user affinity replaces that, `{}` sets no constraints. K8ssandraCluster has no `schedulerName` or topology spread, and cass-operator drops pod affinity, so those are rejected. Instances created before keep one pod per node and reject `affinity` |
 | Bootstrap credentials | `cassandra.superuserSecretRef` | Map `spec.userSecretRef`. Validate the `username` / `password` keys |
 | Soft pod anti-affinity (dev/test) | `softPodAntiAffinity` | Done: the default only prefers separate nodes, so multi-node clusters run on small or single-node dev clusters |

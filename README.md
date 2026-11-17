@@ -160,6 +160,19 @@ kubectl get instance my-instance -o jsonpath='{.status.connection}'
 
 Credentials are in the secret named by `.status.connection.credentialsSecretRef`.
 
+`status.phase` follows what the operator is doing, and `status.message` says why:
+
+| Phase | When |
+|---|---|
+| `Provisioning` | the cluster is being created |
+| `Ready` | every operation has finished and the nodes are up |
+| `Updating` | nodes are being added, removed, restarted, updated or resized, or a pod is not ready, for example after a node failure |
+| `Restoring` | a `Restore` is running; Medusa stops and restarts every node |
+| `Failed` | the operator reports an error or refuses a change, for example a volume that cannot be resized |
+
+`status.components` reports the ready and total `engine` pods. Medusa runs as their sidecar,
+so `backupAgent` has no entry of its own.
+
 ## Topologies
 
 <!-- BEGIN GENERATED: topologies -->

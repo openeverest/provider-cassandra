@@ -1,0 +1,7 @@
+apiVersion: core.openeverest.io/v1alpha1
+kind: Instance
+metadata:
+  name: cass-lifecycle
+status:
+  phase: Updating
+  message: Waiting for Cassandra nodes to become ready
