@@ -16,10 +16,11 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	"k8s.io/utils/ptr"
-	"sigs.k8s.io/controller-runtime/pkg/event"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
+	backupv1alpha1 "github.com/openeverest/openeverest/v2/api/backup/v1alpha1"
 	corev1alpha1 "github.com/openeverest/openeverest/v2/api/core/v1alpha1"
 	"github.com/openeverest/openeverest/v2/provider-runtime/controller"
 
@@ -109,28 +110,18 @@ func New() *Provider {
 			// win the race to persist CassandraInitialized=true, so the Instance
 			// never leaves Provisioning even once Cassandra is actually healthy.
 			// The status transitions Status() reports on are let through
-			// separately (clusterHealthChanged), since the runtime does not
-			// requeue an Instance that is still Provisioning.
+			// separately (clusterStatusChanged), since the runtime does not
+			// requeue an Instance on its own.
 			WatchConfigs: []controller.WatchConfig{
 				controller.WatchOwned(&k8ssandraapi.K8ssandraCluster{},
-					predicate.Or(controller.GenerationChangedPredicate, clusterHealthChanged)),
+					predicate.Or(controller.GenerationChangedPredicate, clusterStatusChanged)),
+				// Restores are not owned by the Instance, and its phase has to
+				// enter and leave Restoring when one starts or ends.
+				controller.WatchExternal(&backupv1alpha1.Restore{},
+					handler.EnqueueRequestsFromMapFunc(enqueueRestoreInstance)),
 			},
 		},
 	}
-}
-
-// clusterHealthChanged passes K8ssandraCluster updates that change what
-// Status() reports: the CassandraInitialized condition or the error field.
-var clusterHealthChanged = predicate.Funcs{
-	UpdateFunc: func(e event.UpdateEvent) bool {
-		oldKC, okOld := e.ObjectOld.(*k8ssandraapi.K8ssandraCluster)
-		newKC, okNew := e.ObjectNew.(*k8ssandraapi.K8ssandraCluster)
-		if !okOld || !okNew {
-			return false
-		}
-		return cassandraInitialized(oldKC) != cassandraInitialized(newKC) ||
-			oldKC.Status.Error != newKC.Status.Error
-	},
 }
 
 // Sync creates or updates the K8ssandraCluster that backs this Instance.
@@ -391,42 +382,6 @@ func buildStorageConfig(storage *corev1alpha1.Storage) *cassdcapi.StorageConfig 
 			},
 		},
 	}
-}
-
-// Status translates the K8ssandraCluster status into an Instance status.
-func (p *Provider) Status(c *controller.Context) (controller.Status, error) {
-	kc := &k8ssandraapi.K8ssandraCluster{}
-	if err := c.Get(kc, c.Name()); err != nil {
-		return controller.Provisioning("Waiting for K8ssandraCluster"), nil
-	}
-
-	if kc.Status.Error != "" && kc.Status.Error != "None" {
-		return controller.Failed(kc.Status.Error), nil
-	}
-
-	if !cassandraInitialized(kc) {
-		return controller.Provisioning("Cluster is being created"), nil
-	}
-
-	details, err := buildConnectionDetails(c)
-	if err != nil {
-		return controller.Failed("Failed to build connection details: " + err.Error()), nil
-	}
-	return controller.ReadyWithConnectionDetails(details), nil
-}
-
-// cassandraInitialized reports whether the cluster has published a datacenter
-// and reached its initialized condition.
-func cassandraInitialized(kc *k8ssandraapi.K8ssandraCluster) bool {
-	if len(kc.Status.Datacenters) == 0 {
-		return false
-	}
-	for _, cond := range kc.Status.Conditions {
-		if string(cond.Type) == k8ssandraapi.CassandraInitialized && cond.Status == corev1.ConditionTrue {
-			return true
-		}
-	}
-	return false
 }
 
 // buildConnectionDetails reads the generated superuser secret and combines it

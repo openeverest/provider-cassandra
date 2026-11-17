@@ -46,6 +46,23 @@ spec:
         - assert:
             file: 11-assert.yaml
 
+    # k8ssandra-operator copies the CassandraDatacenter status into the
+    # K8ssandraCluster, and the Instance phase follows its conditions.
+    - name: datacenter-conditions
+      try:
+        - script:
+            content: |
+              kubectl -n $NAMESPACE patch k8ssandracluster/cass-core --subresource status --type merge \
+                --patch-file ${PROVIDER_ROOT_PATH}/test/integration/core/12-scaling-status.yaml
+        - assert:
+            file: 12-assert.yaml
+        - script:
+            content: |
+              kubectl -n $NAMESPACE patch k8ssandracluster/cass-core --subresource status --type merge \
+                --patch-file ${PROVIDER_ROOT_PATH}/test/integration/core/13-settled-status.yaml
+        - assert:
+            file: 11-assert.yaml
+
     - name: scale-and-resize
       try:
         - patch:

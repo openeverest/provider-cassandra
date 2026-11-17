@@ -1,0 +1,12 @@
+status:
+  datacenters:
+    dc1-32dfcac1:
+      cassandra:
+        cassandraOperatorProgress: Updating
+        nodeStatuses: {}
+        nodeReplacements: []
+        conditions:
+          - type: ScalingUp
+            status: "True"
+            reason: ""
+            message: ""

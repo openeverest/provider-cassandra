@@ -15,3 +15,10 @@ metadata:
 status:
   cassandraOperatorProgress: Ready
   (length(nodeStatuses)): 4
+---
+apiVersion: core.openeverest.io/v1alpha1
+kind: Instance
+metadata:
+  name: cass-lifecycle
+status:
+  phase: Ready

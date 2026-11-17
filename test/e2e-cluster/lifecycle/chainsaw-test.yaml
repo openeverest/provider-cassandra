@@ -7,8 +7,8 @@ spec:
   description: |
     Run a real Cassandra cluster through its lifecycle: create a three-node 4.1
     Instance and write data, upgrade to 5.0, scale out to four nodes and back
-    to three, resize, check the data survived every step, then delete it and
-    check nothing is left.
+    to three, lose a node, resize, check the data survived every step and the
+    Instance phase followed along, then delete it and check nothing is left.
 
     It starts at three nodes because k8ssandra-operator raises system keyspace
     replication (capped at 3) without repairing, so growing a smaller cluster
@@ -67,6 +67,9 @@ spec:
         - patch:
             file: 30-scale-out.yaml
         - assert:
+            timeout: 5m
+            file: 30-updating.yaml
+        - assert:
             timeout: 15m
             file: 30-assert.yaml
         - script:
@@ -76,6 +79,24 @@ spec:
       try:
         - patch:
             file: 40-scale-in.yaml
+        - assert:
+            timeout: 5m
+            file: 40-updating.yaml
+        - assert:
+            timeout: 15m
+            file: 40-assert.yaml
+        - script:
+            content: *check-data
+
+    # cass-operator restarts the node without reporting it in the datacenter
+    # status.
+    - name: node-failure
+      try:
+        - script:
+            content: kubectl -n $NAMESPACE delete pod cass-lifecycle-dc1-0b60c5c2-default-sts-0 --wait=false
+        - assert:
+            timeout: 5m
+            file: 45-recovering.yaml
         - assert:
             timeout: 15m
             file: 40-assert.yaml

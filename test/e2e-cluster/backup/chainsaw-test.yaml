@@ -79,6 +79,9 @@ spec:
         - apply:
             file: 30-create-restore.yaml
         - assert:
+            timeout: 5m
+            file: 30-restoring.yaml
+        - assert:
             timeout: 20m
             file: 30-assert.yaml
         - assert:
