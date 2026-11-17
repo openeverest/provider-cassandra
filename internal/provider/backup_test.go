@@ -231,6 +231,22 @@ func TestBuildMedusa(t *testing.T) {
 		assert.False(t, held)
 		assert.Nil(t, medusa)
 	})
+
+	t.Run("the runtime records the folder Medusa writes to", func(t *testing.T) {
+		t.Parallel()
+		c := fakeClientContext(uidBackupInstance(nil), backupStorage(minioParameters, nil), storageCredentials())
+		c.SetBackupPathStyle(controller.BackupPathStyleOf(New()))
+
+		storages, err := c.BackupStorages()
+		require.NoError(t, err)
+		require.Len(t, storages, 1)
+		assert.Equal(t, testMedusaPrefix, storages[0].Path)
+
+		medusa, _, err := buildMedusa(c)
+		require.NoError(t, err)
+		require.NotNil(t, medusa)
+		assert.Equal(t, testMedusaPrefix, medusa.StorageProperties.Prefix)
+	})
 }
 
 func TestBuildMedusaHoldsStorage(t *testing.T) {

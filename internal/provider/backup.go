@@ -16,7 +16,6 @@ package provider
 
 import (
 	"fmt"
-	"strings"
 
 	k8ssandraapi "github.com/k8ssandra/k8ssandra-operator/apis/k8ssandra/v1alpha1"
 	medusaapi "github.com/k8ssandra/k8ssandra-operator/apis/medusa/v1alpha1"
@@ -37,6 +36,7 @@ import (
 var _ controller.BackupProvider = (*Provider)(nil)
 var _ controller.BackupWatcher = (*Provider)(nil)
 var _ controller.RestoreWatcher = (*Provider)(nil)
+var _ controller.BackupPathStyleProvider = (*Provider)(nil)
 
 const (
 	// medusaCredentialsKey is the Secret key k8ssandra-operator mounts as
@@ -126,14 +126,26 @@ func medusaStorage(c *controller.Context, s controller.ResolvedBackupStorage) (m
 	}, creds, nil
 }
 
+// BackupPathStyle lays the backup path of every storage entry out flat, as
+// one folder at the root of the bucket, because Medusa cannot write under a
+// nested path. The runtime then hands Sync that folder as
+// ResolvedBackupStorage.Path and records it, in the Instance status and in
+// Backup.status.path, as where the backups are.
+func (p *Provider) BackupPathStyle() backupv1alpha1.BackupPathStyle {
+	return backupv1alpha1.BackupPathFlat
+}
+
 // medusaPrefix flattens path, the directory the runtime assigns to a storage
 // entry, into the single folder Medusa writes under. Medusa refuses a prefix
 // containing "/" and parses object keys assuming the prefix is one segment,
 // so it cannot write under a nested path. "_" cannot occur in a namespace,
 // instance, UID or BackupStorage name, so distinct entries keep distinct
-// prefixes even when the storage's own prefix contains "_".
+// prefixes even when the storage's own prefix contains "_". The runtime
+// already lays the path out flat for this provider (BackupPathStyle), so
+// this changes nothing there; it keeps the prefix valid for a Context the
+// runtime did not set the style on.
 func medusaPrefix(path string) string {
-	return strings.ReplaceAll(path, "/", "_")
+	return backupv1alpha1.BackupPathFlat.Apply(path)
 }
 
 // syncMedusaCredentials renders the BackupStorage's key pair into the AWS
