@@ -86,6 +86,9 @@ jobs:
           go-version-file: go.mod
           cache: true
 
+      # make generate copies the operator CRDs from the chart dependency.
+      - uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4.3.1
+
       - name: Check generated files are up-to-date
         run: make verify
 
@@ -100,6 +103,15 @@ jobs:
 
       - name: Lint Helm chart
         run: helm lint charts/provider-cassandra
+
+      - name: Verify preflight hook rendering
+        run: |
+          helm repo add k8ssandra https://helm.k8ssandra.io/stable
+          helm dependency build charts/provider-cassandra
+          helm template test charts/provider-cassandra > /tmp/chart.yaml
+          grep -q -- '--preflight-spec=/preflight/provider-spec.yaml' /tmp/chart.yaml
+          grep -q -- '--apply-operator-crds' /tmp/chart.yaml || { echo 'preflight hook does not upgrade the operator CRDs'; exit 1; }
+          ! grep -q 'crd-upgrader' /tmp/chart.yaml || { echo 'the operator chart CRD upgrader job is rendered'; exit 1; }
 
   # Each integration suite runs as a separate job through the reusable
   # integration-test.yaml workflow. To add a suite, create a directory under

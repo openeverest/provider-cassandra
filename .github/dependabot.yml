@@ -3,6 +3,8 @@
 # placed in one multi-ecosystem group so a new operator release arrives as a
 # single PR that bumps them together. cass-operator is not tracked on its own: it
 # ships inside the k8ssandra-operator chart and must follow that chart's version.
+# Such a PR needs `make generate` on top: the operator CRDs the pre-upgrade hook
+# applies are copied from the chart into internal/operatorcrds.
 version: 2
 
 multi-ecosystem-groups:

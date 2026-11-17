@@ -112,6 +112,9 @@ helm upgrade provider-cassandra provider-cassandra/provider-cassandra --version 
 helm uninstall provider-cassandra --namespace everest-system
 ```
 
+A pre-upgrade hook checks that every `Instance` can follow the new version catalog, then
+upgrades the bundled operator's CRDs — Helm itself installs the CRDs of a chart dependency only
+once. With `operator.enabled=false` the CRDs stay yours to upgrade.
 Uninstalling the chart does **not** delete running `Instance` resources or their data.
 
 ## Usage

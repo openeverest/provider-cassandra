@@ -155,6 +155,10 @@ global:
 operator:
   # -- Deploy the bundled operator. Set to false to use an externally managed operator.
   enabled: true
+  # -- Keep the operator chart's CRD upgrader job off: it cannot find its chart
+  # under the `operator` alias and fails every upgrade. The provider's
+  # pre-upgrade hook upgrades the operator CRDs instead.
+  disableCrdUpgraderJob: true
   cass-operator:
     # -- Skip the template-time cert-manager presence check. cass-operator
     # self-signs its webhook certificates; the parent operator still requires

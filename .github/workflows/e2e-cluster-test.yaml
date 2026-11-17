@@ -88,6 +88,10 @@ jobs:
       - name: Deploy provider with k8ssandra-operator
         run: make deploy-provider-e2e
 
+      # The second run is a helm upgrade, so the pre-upgrade hook runs.
+      - name: Upgrade provider
+        run: make deploy-provider-e2e
+
       - name: Run ${{ inputs.make_target }}
         run: make ${{ inputs.make_target }}
 
