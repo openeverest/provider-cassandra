@@ -28,6 +28,11 @@ spec:
         - script:
             content: kubectl -n provider-system wait --for=condition=available deploy --all --timeout=5m
 
+    - name: backup-class-claimed
+      try:
+        - assert:
+            file: 00-assert.yaml
+
     - name: deploy-seaweedfs
       try:
         - script:

@@ -107,11 +107,11 @@ generate: manifests operator-crds helm-sync-rbac ## Run all code generation (RBA
 .PHONY: verify
 verify: ## Verify that generated files are up-to-date (for CI).
 	@$(MAKE) generate
-	@if git diff --quiet -- config/ internal/operatorcrds/ $(CHART_DIR)/generated/; then \
+	@if git diff --quiet -- config/ definition/ internal/operatorcrds/ $(CHART_DIR)/generated/; then \
 		echo "Generated files are up-to-date."; \
 	else \
 		echo "ERROR: Generated files are out of date. Run 'make generate' and commit the changes."; \
-		git diff -- config/ $(CHART_DIR)/generated/; \
+		git diff -- config/ definition/ $(CHART_DIR)/generated/; \
 		git diff --stat -- internal/operatorcrds/; \
 		exit 1; \
 	fi

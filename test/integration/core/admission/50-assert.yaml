@@ -1,0 +1,11 @@
+# Core publishes the class's verdict for the Provider it names. This
+# provider's admission reads it: a class judged for another provider only is
+# incompatible with this one.
+apiVersion: backup.openeverest.io/v1alpha1
+kind: BackupClass
+metadata:
+  name: test-admission-other-provider
+status:
+  providers:
+    - name: provider-percona-xtradb-cluster
+      classGeneration: 1

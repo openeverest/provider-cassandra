@@ -1,5 +1,6 @@
 # The provider must be deployed and ready, and its chart must have installed
-# the Medusa BackupClass.
+# the Medusa BackupClass, which the provider claims (Accepted) and core then
+# publishes as Compatible with this provider.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -18,5 +19,12 @@ spec:
     - name: s3
       authModes:
         - AccessKey
-  supportedProviders:
-    - provider-cassandra
+  providerManaged:
+    providerRef:
+      name: provider-cassandra
+status:
+  (conditions[?type == 'Accepted']):
+    - status: 'True'
+  providers:
+    - name: provider-cassandra
+      compatibility: Compatible

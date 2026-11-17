@@ -28,6 +28,8 @@ import (
 	commonv1alpha1 "github.com/openeverest/openeverest/v2/api/common/v1alpha1"
 	s3class "github.com/openeverest/openeverest/v2/backupstorageclasses/s3"
 	"github.com/openeverest/openeverest/v2/provider-runtime/controller"
+
+	"github.com/openeverest/provider-cassandra/definition/backupclasses"
 )
 
 // Compile-time interface checks.
@@ -35,9 +37,15 @@ var _ controller.BackupProvider = (*Provider)(nil)
 var _ controller.BackupWatcher = (*Provider)(nil)
 var _ controller.RestoreWatcher = (*Provider)(nil)
 
-// medusaCredentialsKey is the Secret key k8ssandra-operator mounts as
-// Medusa's AWS credentials file (/etc/medusa-secrets/credentials).
-const medusaCredentialsKey = "credentials"
+const (
+	// medusaCredentialsKey is the Secret key k8ssandra-operator mounts as
+	// Medusa's AWS credentials file (/etc/medusa-secrets/credentials).
+	medusaCredentialsKey = "credentials"
+
+	// backupClassName is the BackupClass the provider ships, defined in
+	// definition/backupclasses.
+	backupClassName = "medusa"
+)
 
 // buildMedusa configures Medusa on the cluster from the Instance's backup
 // storage, or returns nil when backups are disabled so the cluster is created
@@ -92,7 +100,7 @@ func medusaStorage(c *controller.Context, s controller.ResolvedBackupStorage) (m
 	if err != nil {
 		return medusaapi.Storage{}, s3class.Credentials{}, err
 	}
-	tls, err := c.BackupStorageTLS(s.Storage, controller.TLSSupport{SkipVerify: true})
+	tls, err := c.BackupStorageTLS(s.Storage, backupclasses.TLSSupport(backupClassName, s3class.ClassName))
 	if err != nil {
 		return medusaapi.Storage{}, s3class.Credentials{}, err
 	}

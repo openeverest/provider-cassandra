@@ -95,6 +95,8 @@ spec:
       try:
         - apply:
             file: 50-other-provider-class.yaml
+        - assert:
+            file: 50-assert.yaml
         - script:
             content: kubectl apply -n $NAMESPACE -f 51-other-provider-class.yaml
             check:
