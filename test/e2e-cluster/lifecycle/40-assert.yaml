@@ -7,10 +7,12 @@ spec:
 status:
   readyReplicas: 3
 ---
+# See 10-assert.yaml: the resize that follows changes the pod template.
 apiVersion: cassandra.datastax.com/v1beta1
 kind: CassandraDatacenter
 metadata:
   name: dc1-0b60c5c2
+(status.observedGeneration == metadata.generation): true
 status:
   cassandraOperatorProgress: Ready
   (length(nodeStatuses)): 3

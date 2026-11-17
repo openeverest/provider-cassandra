@@ -6,3 +6,15 @@ status:
   phase: Ready
   connectionSecretRef:
     name: cass-lifecycle-conn
+---
+# cass-operator only applies a pod template change it has not marked observed,
+# and a change that lands in the middle of a reconcile is marked observed
+# without being applied (#49). observedGeneration is written when a reconcile
+# ends, so wait for it before the next step changes the template.
+apiVersion: cassandra.datastax.com/v1beta1
+kind: CassandraDatacenter
+metadata:
+  name: dc1-0b60c5c2
+(status.observedGeneration == metadata.generation): true
+status:
+  cassandraOperatorProgress: Ready
