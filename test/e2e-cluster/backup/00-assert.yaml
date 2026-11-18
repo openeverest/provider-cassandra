@@ -1,0 +1,12 @@
+# The provider claims the Medusa BackupClass its chart installs (Accepted),
+# and core publishes it as Compatible with this provider.
+apiVersion: backup.openeverest.io/v1alpha1
+kind: BackupClass
+metadata:
+  name: medusa
+status:
+  (conditions[?type == 'Accepted']):
+    - status: 'True'
+  providers:
+    - name: provider-cassandra
+      compatibility: Compatible

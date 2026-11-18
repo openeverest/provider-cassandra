@@ -107,11 +107,11 @@ generate: manifests operator-crds helm-sync-rbac ## Run all code generation (RBA
 .PHONY: verify
 verify: ## Verify that generated files are up-to-date (for CI).
 	@$(MAKE) generate
-	@if git diff --quiet -- config/ internal/operatorcrds/ $(CHART_DIR)/generated/; then \
+	@if git diff --quiet -- config/ definition/ internal/operatorcrds/ $(CHART_DIR)/generated/; then \
 		echo "Generated files are up-to-date."; \
 	else \
 		echo "ERROR: Generated files are out of date. Run 'make generate' and commit the changes."; \
-		git diff -- config/ $(CHART_DIR)/generated/; \
+		git diff -- config/ definition/ $(CHART_DIR)/generated/; \
 		git diff --stat -- internal/operatorcrds/; \
 		exit 1; \
 	fi
@@ -219,6 +219,8 @@ openeverest-checkout: ## Check out openeverest/openeverest at OPENEVEREST_REF in
 install-crds: helm-deps ## Install OpenEverest CRDs and the k8ssandra-operator CRDs (from the pinned chart dependency) into the cluster.
 	go mod download github.com/openeverest/openeverest/v2
 	kubectl apply --server-side --force-conflicts -f "$$(go list -m -f '{{.Dir}}' github.com/openeverest/openeverest/v2)/config/crd/bases"
+	kubectl wait --for condition=established --timeout=30s crd/backupstorageclasses.backup.openeverest.io
+	kubectl apply -f "$$(go list -m -f '{{.Dir}}' github.com/openeverest/openeverest/v2)/config/backupstorageclasses/s3.yaml"
 	@rm -rf $(OPERATOR_CHART_DIR) && mkdir -p $(OPERATOR_CHART_DIR)
 	tar -xzf $(CHART_DIR)/charts/k8ssandra-operator-*.tgz -C $(OPERATOR_CHART_DIR)
 	find $(OPERATOR_CHART_DIR) -path '*/crds/*.yaml' -exec kubectl apply --server-side -f {} \;

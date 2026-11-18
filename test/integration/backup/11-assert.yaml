@@ -1,6 +1,8 @@
 # Medusa builds its S3 URL from host, port and secure, and reads credentials
 # from an AWS credentials file, so the provider splits the endpoint URL and
 # derives a "<instance>-medusa-storage" Secret from the BackupStorage Secret.
+# The prefix is backups/<namespace>/<instance>/<instance-uid>/<storage> with
+# every "/" turned into "_": Medusa refuses a prefix containing a slash.
 apiVersion: k8ssandra.io/v1alpha1
 kind: K8ssandraCluster
 metadata:
@@ -14,7 +16,9 @@ spec:
       host: s3.example.com
       port: 9000
       secure: true
-      prefix: cass-backup
+      (starts_with(prefix, join('_', ['backups', $namespace, 'cass-backup', '']))): true
+      (ends_with(prefix, '_s3-storage')): true
+      (contains(prefix, '/')): false
       maxBackupCount: 3
       storageSecretRef:
         name: cass-backup-medusa-storage
