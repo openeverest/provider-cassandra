@@ -77,11 +77,18 @@ func TestValidate(t *testing.T) {
 			mutate: component(common.ComponentEngine, func(c *corev1alpha1.ComponentSpec) { c.Replicas = nil }),
 		},
 		{
-			name: "optional backupAgent and monitoring",
+			name: "optional backupAgent",
 			mutate: func(in *corev1alpha1.Instance) {
 				in.Spec.Components[common.ComponentBackupAgent] = corev1alpha1.ComponentSpec{}
-				in.Spec.Components[common.ComponentMonitoring] = corev1alpha1.ComponentSpec{}
 			},
+		},
+		{
+			// Monitoring is spec.monitoring.destinations, not a component.
+			name: "monitoring component",
+			mutate: func(in *corev1alpha1.Instance) {
+				in.Spec.Components["monitoring"] = corev1alpha1.ComponentSpec{}
+			},
+			want: []string{"spec.components[monitoring]"},
 		},
 		{
 			name: "heap sizes",

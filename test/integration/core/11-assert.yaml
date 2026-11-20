@@ -12,6 +12,18 @@ status:
       selector: core.openeverest.io/component=engine,core.openeverest.io/instance=cass-core
       replicas: 0
       readyReplicas: 0
+  # Published once Cassandra is initialized, for monitoring extensions.
+  monitoring:
+    sources:
+      metrics:
+        - component: engine
+          kind: cassandra
+          podSelector:
+            core.openeverest.io/component: engine
+            core.openeverest.io/instance: cass-core
+          port: metrics
+          path: /metrics
+          scheme: http
 ---
 apiVersion: v1
 kind: Secret

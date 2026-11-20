@@ -23,9 +23,6 @@ const (
 	ComponentBackupAgent = "backupAgent"
 	ComponentTypeMedusa  = "medusa"
 
-	ComponentMonitoring     = "monitoring"
-	ComponentTypePrometheus = "prometheus"
-
 	ComponentRepair     = "repair"
 	ComponentTypeReaper = "reaper"
 

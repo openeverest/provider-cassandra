@@ -8,8 +8,9 @@ spec:
     Run a real Cassandra cluster through its lifecycle: create a three-node 4.1
     Instance and write data, upgrade to 5.0, scale out to four nodes and back
     to three, lose a node, resize, check the data survived every step and the
-    Instance phase followed along, check Reaper scheduled repairs and remove
-    it, then delete it and check nothing is left.
+    Instance phase followed along, scrape the metrics endpoint the Instance
+    publishes, check Reaper scheduled repairs and remove it, then delete it and
+    check nothing is left.
 
     It starts at three nodes because k8ssandra-operator raises system keyspace
     replication (capped at 3) without repairing, so growing a smaller cluster
@@ -40,6 +41,32 @@ spec:
         - assert:
             timeout: 20m
             file: 10-assert.yaml
+
+    - name: scrape-metrics
+      try:
+        # The endpoint the Instance publishes for monitoring extensions serves
+        # Cassandra metrics on every engine pod. No extension runs here, so it
+        # is scraped through the API server's pod proxy.
+        - script:
+            timeout: 2m
+            content: |
+              set -eu
+              endpoint=$(kubectl -n $NAMESPACE get instance cass-lifecycle \
+                -o jsonpath='{.status.monitoring.sources.metrics[?(@.component=="engine")]}')
+              test -n "$endpoint"
+              port_name=$(echo "$endpoint" | jq -r .port)
+              path=$(echo "$endpoint" | jq -r .path)
+              selector=$(echo "$endpoint" | jq -r '.podSelector | to_entries | map("\(.key)=\(.value)") | join(",")')
+              pods=$(kubectl -n $NAMESPACE get pods -l "$selector" -o name)
+              test "$(echo "$pods" | wc -l)" -eq 3
+              for pod in $pods; do
+                pod=${pod#pod/}
+                port=$(kubectl -n $NAMESPACE get pod "$pod" -o json \
+                  | jq -r --arg p "$port_name" '[.spec.containers[].ports[]? | select(.name == $p) | .containerPort][0]')
+                metrics=$(kubectl get --raw "/api/v1/namespaces/$NAMESPACE/pods/$pod:$port/proxy$path")
+                echo "$metrics" | grep -q '^# TYPE '
+                echo "$metrics" | grep -qi 'cassandra'
+              done
 
     - name: write-data
       try:

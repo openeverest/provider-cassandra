@@ -4,6 +4,7 @@ spec:
   componentTypes:
     cassandra:
       defaultVersion: 5.0.4
+      kind: cassandra
       versions:
         - image: k8ssandra/cass-management-api:4.1.9-ubi
           version: 4.1.9
@@ -14,11 +15,6 @@ spec:
       versions:
         - image: k8ssandra/medusa:0.22.3
           version: 0.22.3
-    prometheus:
-      defaultVersion: 2.55.1
-      versions:
-        - image: prom/prometheus:v2.55.1
-          version: 2.55.1
     reaper:
       defaultVersion: 5.1.0
       versions:
@@ -49,11 +45,13 @@ spec:
               type: string
           type: object
       type: cassandra
-    monitoring:
-      type: prometheus
     repair:
       type: reaper
   defaultVersion: "5.0"
+  monitoring:
+    componentTypes:
+      cassandra:
+        metrics: Native
   release:
     version: 0.1.0
   topologies:
@@ -82,11 +80,6 @@ spec:
                     tolerations: {}
                 storage: {}
                 version: {}
-        monitoring:
-          optional: true
-          supportedFields:
-            openAPIV3Schema:
-              properties: {}
         repair:
           optional: true
           supportedFields:
@@ -270,12 +263,10 @@ spec:
     - components:
         backupAgent: 0.22.3
         engine: 5.0.4
-        monitoring: 2.55.1
         repair: 5.1.0
       name: "5.0"
     - components:
         backupAgent: 0.22.3
         engine: 4.1.9
-        monitoring: 2.55.1
         repair: 5.1.0
       name: "4.1"

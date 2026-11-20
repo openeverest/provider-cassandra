@@ -63,7 +63,7 @@ provider itself is covered under [Installation](#installation).
 | Horizontal scaling | ✅ | `spec.components.engine.replicas` |
 | Vertical scaling (CPU / memory) | ✅ | `spec.components.engine.resources` |
 | Version upgrades | ✅ | of the deployed Cassandra version — change `spec.version`; see [Versions](#versions) |
-| Monitoring | 🚧 | optional `monitoring` component (Prometheus) — wiring in progress |
+| Monitoring | ✅ | Metrics of the Cassandra pods published for monitoring extensions through `spec.monitoring.destinations`. See [Monitoring](#monitoring) |
 | Repairs | ✅ | optional `repair` component (Reaper); see [Repairs](#repairs) |
 
 Stateful workloads additionally report:
@@ -188,6 +188,41 @@ Credentials are in the secret named by `.status.connection.credentialsSecretRef`
 `status.components` reports the ready and total `engine` pods. Medusa runs as their sidecar,
 so `backupAgent` has no entry of its own.
 
+## Monitoring
+
+Monitoring is an OpenEverest extension. The k8ssandra management API serves Cassandra's
+metrics on every Cassandra pod, on container port `metrics` (9000, `/metrics`). Once Cassandra
+is initialized, the provider publishes that endpoint in
+`Instance.status.monitoring.sources.metrics`, and a monitoring extension creates the scrape
+objects from it. To send an Instance's metrics somewhere:
+
+1. Install a monitoring extension, such as
+   [monitoring-prometheus](https://github.com/openeverest/monitoring-prometheus), which
+   installs its `MonitoringClass`.
+2. Create a `MonitoringDestination` of that class (in the UI: **Settings → Monitoring
+   destinations**).
+3. List it on the Instance (in the UI: the wizard's monitoring step, or the instance overview):
+
+```yaml
+spec:
+  monitoring:
+    destinations:
+      - name: metrics
+        destinationRef:
+          name: prometheus
+```
+
+The endpoint is always served, so adding or removing a destination restarts nothing. It stays
+published without a destination, so a scraper OpenEverest doesn't configure (your own
+`ServiceMonitor`, a Datadog agent, Grafana Alloy) can read its pod selector, port, path and
+scheme from the Instance status. Medusa and Reaper publish no metrics.
+
+> [!IMPORTANT]
+> The `monitoring` component (type `prometheus`) is gone: an Instance that lists it is
+> rejected. The provider no longer turns on k8ssandra-operator's Prometheus telemetry, and the
+> operator deletes the `ServiceMonitor` it created. To collect metrics, list a destination in
+> `spec.monitoring.destinations`.
+
 ## Repairs
 
 Cassandra needs every keyspace repaired within `gc_grace_seconds` (10 days by default),
@@ -221,15 +256,16 @@ spec:
 | `singleDatacenter` | ✅ | A single Cassandra datacenter (`dc1`) built from the `engine` component |
 <!-- END GENERATED: topologies -->
 
-The `backupAgent` (Medusa), `monitoring` (Prometheus) and `repair` (Reaper) components are optional.
+The `backupAgent` (Medusa) and `repair` (Reaper) components are optional. Monitoring is configured
+on the Instance (`spec.monitoring.destinations`), not as a component; see [Monitoring](#monitoring).
 
 ## Versions
 
 <!-- BEGIN GENERATED: versions -->
-| Version bundle | Default | cassandra | medusa | prometheus |
+| Version bundle | Default | cassandra | medusa | reaper |
 |---|---|---|---|---|
-| `5.0` | ✅ | `5.0.4` | `0.22.3` | `2.55.1` |
-| `4.1` | | `4.1.9` | `0.22.3` | `2.55.1` |
+| `5.0` | ✅ | `5.0.4` | `0.22.3` | `5.1.0` |
+| `4.1` | | `4.1.9` | `0.22.3` | `5.1.0` |
 <!-- END GENERATED: versions -->
 
 Source of truth: [definition/versions.yaml](definition/versions.yaml).
@@ -249,7 +285,7 @@ The technology-specific knobs worth knowing about:
 
 | Parameter | Applies to | Purpose |
 |---|---|---|
-| `monitoringConfigName` | `monitoring` | Monitoring configuration to attach the instance to |
+| `heapInitialSize`, `heapMaxSize` | `engine` | JVM heap (`-Xms`, `-Xmx`) as quantities; unset, k8ssandra-operator sizes the heap from the container memory |
 
 ## Development
 
