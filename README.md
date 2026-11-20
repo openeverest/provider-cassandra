@@ -49,7 +49,7 @@ lifecycle work is delegated to the operator.
 
 | provider-cassandra | OpenEverest | k8ssandra-operator | Kubernetes |
 |---|---|---|---|
-| `0.2.x` | `2.0.0-dev.5` | `1.34.x` | `1.30` – `1.34` |
+| `0.2.x` | `2.0.0-alpha.1` | `1.34.x` | `1.32` – `1.34` |
 | `0.1.x` | `2.0.0-dev.1` | `1.34.x` | `1.30` – `1.34` |
 
 ## Capabilities
@@ -79,13 +79,11 @@ Stateful workloads additionally report:
 
 ## Installation
 
-The provider chart is published to the repository's Helm chart repository:
+The provider chart is published as an OCI artifact on GHCR:
 
 ```bash
-helm repo add provider-cassandra https://openeverest.github.io/provider-cassandra/
-helm repo update
-helm install provider-cassandra provider-cassandra/provider-cassandra \
-  --version 0.1.0 \
+helm install provider-cassandra oci://ghcr.io/openeverest/charts/provider-cassandra \
+  --version 0.2.0 \
   --namespace everest-system
 ```
 
@@ -114,8 +112,8 @@ helm install provider-cassandra provider-cassandra/provider-cassandra \
 Upgrade and uninstall:
 
 ```bash
-helm repo update
-helm upgrade provider-cassandra provider-cassandra/provider-cassandra --version 0.1.0
+helm upgrade provider-cassandra oci://ghcr.io/openeverest/charts/provider-cassandra \
+  --version 0.2.0 --namespace everest-system
 helm uninstall provider-cassandra --namespace everest-system
 ```
 

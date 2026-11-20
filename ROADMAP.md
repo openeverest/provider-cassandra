@@ -41,8 +41,6 @@ Gaps in the current code:
   is out of date (operator `1.32.x` ships Medusa `0.29`–`0.30`).
 - The provider ignores these `Instance` fields: `service`, `userSecretRef`,
   `dataSource` and `maintenance`.
-- The Medusa BackupClass description is still a `TODO`
-  ([definition/backupclasses/medusa/class.yaml](definition/backupclasses/medusa/class.yaml)).
 
 ---
 

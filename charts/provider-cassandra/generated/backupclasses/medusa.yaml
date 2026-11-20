@@ -4,7 +4,7 @@ apiVersion: backup.openeverest.io/v1alpha1
 kind: BackupClass
 metadata:
   annotations:
-    openeverest.io/provider-version: 0.1.0
+    openeverest.io/provider-version: 0.2.0
   name: medusa
 spec:
   backupStorageClasses:
@@ -50,7 +50,7 @@ spec:
       tls:
         customCA: None
         insecureSkipVerify: Supported
-  description: 'TODO: describe what this BackupClass does.'
+  description: Backs up and restores Cassandra with Medusa, which k8ssandra-operator runs as a sidecar of every Cassandra node. Writes to S3-compatible storage; restores in place.
   displayName: Medusa Backup Class
   executionMode: ProviderManaged
   parametersSchema:
