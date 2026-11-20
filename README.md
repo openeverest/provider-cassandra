@@ -101,6 +101,11 @@ helm install provider-cassandra provider-cassandra/provider-cassandra \
   writes are admitted and the `Instance` reports the errors in its `Ready` condition. A
   missing object the `Instance` names, such as its user Secret, is never a reason to reject
   it: `kubectl` prints a warning, and the `Instance` reports it once created.
+- The chart installs a `ClusterInstancePreset` per topology, the starting points the UI offers
+  when you create an Instance in any namespace: `cassandra-singledatacenter` (3 nodes with
+  1 CPU, 4Gi and 25Gi each). Change or disable it, or add your own, under `presets` in the
+  chart values; `provider.shortName` prefixes their names. Presets pin the provider's default
+  [version](#versions) bundle and reference no namespaced objects.
 
 > [!IMPORTANT]
 > The operator's admission webhooks require [cert-manager](https://cert-manager.io) to be
