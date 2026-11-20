@@ -8,8 +8,14 @@ components:
     engine:
         type: cassandra
         parametersSchema: CassandraParameters
-    monitoring:
-        type: prometheus
     repair:
         type: reaper
 name: provider-cassandra
+
+# Component types: the kind of the software each type runs, published as
+# Provider.spec.componentTypes.<type>.kind and matched by monitoring classes
+# (OpenTelemetry db.system.name for databases). Version catalogs stay in
+# versions.yaml. medusa and reaper declare no kind: they publish no metrics.
+componentTypes:
+    cassandra:
+        kind: cassandra

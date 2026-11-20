@@ -52,7 +52,7 @@ func engineWithParameters(t *testing.T, params components.CassandraParameters) c
 }
 
 // newTestInstance builds an Instance for tests that only need
-// spec.components and spec.topology; buildTelemetry reads nothing else.
+// spec.components and spec.topology.
 func newTestInstance(components map[string]corev1alpha1.ComponentSpec, topology *corev1alpha1.TopologySpec) *corev1alpha1.Instance {
 	return &corev1alpha1.Instance{
 		ObjectMeta: metav1.ObjectMeta{Name: "test-instance", Namespace: "default"},
@@ -61,12 +61,6 @@ func newTestInstance(components map[string]corev1alpha1.ComponentSpec, topology 
 			Topology:   topology,
 		},
 	}
-}
-
-// newTestContext wraps instance in a Context with a nil client, valid only
-// for functions that don't touch the client (buildTelemetry).
-func newTestContext(instance *corev1alpha1.Instance) *controller.Context {
-	return controller.NewContext(context.Background(), nil, instance, common.ProviderName)
 }
 
 // fakeClientContext wraps instance in a Context backed by a fake
@@ -304,32 +298,6 @@ func TestResolveEngineResources(t *testing.T) {
 	})
 }
 
-func TestBuildTelemetry(t *testing.T) {
-	t.Parallel()
-
-	t.Run("no monitoring component means no telemetry", func(t *testing.T) {
-		t.Parallel()
-		instance := newTestInstance(map[string]corev1alpha1.ComponentSpec{
-			common.ComponentEngine: {Type: common.ComponentTypeCassandra},
-		}, nil)
-		assert.Nil(t, buildTelemetry(newTestContext(instance)))
-	})
-
-	t.Run("monitoring component enables prometheus telemetry", func(t *testing.T) {
-		t.Parallel()
-		instance := newTestInstance(map[string]corev1alpha1.ComponentSpec{
-			common.ComponentEngine:     {Type: common.ComponentTypeCassandra},
-			common.ComponentMonitoring: {Type: common.ComponentTypePrometheus},
-		}, nil)
-
-		got := buildTelemetry(newTestContext(instance))
-
-		if assert.NotNil(t, got) && assert.NotNil(t, got.Prometheus) && assert.NotNil(t, got.Prometheus.Enabled) {
-			assert.True(t, *got.Prometheus.Enabled)
-		}
-	})
-}
-
 func TestResolveJvmOptions(t *testing.T) {
 	t.Parallel()
 
@@ -489,8 +457,7 @@ func TestSyncLabelsEnginePods(t *testing.T) {
 	t.Parallel()
 
 	instance := newTestInstance(map[string]corev1alpha1.ComponentSpec{
-		common.ComponentEngine:     {Type: common.ComponentTypeCassandra, Image: "k8ssandra/cass-management-api:5.0.4-ubi"},
-		common.ComponentMonitoring: {Type: common.ComponentTypePrometheus},
+		common.ComponentEngine: {Type: common.ComponentTypeCassandra, Image: "k8ssandra/cass-management-api:5.0.4-ubi"},
 	}, nil)
 	c := fakeClientContext(instance)
 
@@ -515,8 +482,7 @@ func TestSyncReapplyDropsRemovedSettings(t *testing.T) {
 	engine.Type = common.ComponentTypeCassandra
 	engine.Image = "k8ssandra/cass-management-api:5.0.4-ubi"
 	instance := newTestInstance(map[string]corev1alpha1.ComponentSpec{
-		common.ComponentEngine:     engine,
-		common.ComponentMonitoring: {Type: common.ComponentTypePrometheus},
+		common.ComponentEngine: engine,
 	}, nil)
 	c := fakeClientContext(instance)
 	p := New()
@@ -525,7 +491,6 @@ func TestSyncReapplyDropsRemovedSettings(t *testing.T) {
 	kc := &k8ssandraapi.K8ssandraCluster{}
 	require.NoError(t, c.Get(kc, instance.Name))
 	require.NotNil(t, kc.Spec.Cassandra.CassandraConfig)
-	require.NotNil(t, kc.Spec.Cassandra.Telemetry)
 	dcName := kc.Spec.Cassandra.Datacenters[0].Meta.Name
 
 	engine.Parameters = nil
@@ -536,7 +501,7 @@ func TestSyncReapplyDropsRemovedSettings(t *testing.T) {
 	kc = &k8ssandraapi.K8ssandraCluster{}
 	require.NoError(t, c2.Get(kc, instance.Name))
 	assert.Nil(t, kc.Spec.Cassandra.CassandraConfig)
-	assert.Nil(t, kc.Spec.Cassandra.Telemetry)
+	assert.Nil(t, kc.Spec.Cassandra.Telemetry, "monitoring is not rendered into the cluster")
 	assert.Equal(t, dcName, kc.Spec.Cassandra.Datacenters[0].Meta.Name, "datacenter name must survive a re-apply")
 	assert.NotNil(t, kc.Spec.Cassandra.Resources, "resources must be grandfathered across a re-apply")
 }

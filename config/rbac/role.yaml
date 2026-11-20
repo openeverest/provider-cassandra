@@ -27,6 +27,12 @@ rules:
 - apiGroups:
   - ""
   resources:
+  - namespaces
+  verbs:
+  - get
+- apiGroups:
+  - ""
+  resources:
   - pods
   verbs:
   - get
@@ -193,8 +199,16 @@ rules:
 - apiGroups:
   - monitoring.openeverest.io
   resources:
-  - monitoringconfigs
+  - monitoringbindings
+  - monitoringclasses
+  - monitoringdestinations
   verbs:
   - get
   - list
   - watch
+- apiGroups:
+  - monitoring.openeverest.io
+  resources:
+  - monitoringbindings/status
+  verbs:
+  - patch

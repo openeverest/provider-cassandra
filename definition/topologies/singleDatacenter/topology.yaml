@@ -1,7 +1,8 @@
 # SingleDatacenter topology definition.
 # Deploys a single Cassandra datacenter (one K8ssandraCluster with one
-# CassandraDatacenter). backupAgent (Medusa), monitoring (Prometheus) and repair
-# (Reaper) are optional add-ons.
+# CassandraDatacenter). backupAgent (Medusa) and repair (Reaper) are optional
+# add-ons. Monitoring is not a component: Instances list MonitoringDestinations
+# in spec.monitoring.destinations (see definition/monitoring.yaml).
 #
 # config.components: which components are used and their defaults.
 # ui: rendering hints for the frontend form.
@@ -30,11 +31,6 @@ config:
                                     podAntiAffinity: {}
         # Medusa runs as a sidecar of the Cassandra pods.
         backupAgent:
-            optional: true
-            supportedFields:
-                properties: {}
-        # Only adds a ServiceMonitor; it runs no pods.
-        monitoring:
             optional: true
             supportedFields:
                 properties: {}
