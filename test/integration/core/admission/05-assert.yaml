@@ -1,0 +1,18 @@
+apiVersion: core.openeverest.io/v1alpha1
+kind: ClusterInstancePreset
+metadata:
+  name: cassandra-singledatacenter
+  labels:
+    app.kubernetes.io/component: preset
+spec:
+  providerRef:
+    name: provider-cassandra
+  version: "5.0"
+  topology:
+    type: singleDatacenter
+  components:
+    engine:
+      type: cassandra
+      replicas: 3
+      storage:
+        size: 25Gi
