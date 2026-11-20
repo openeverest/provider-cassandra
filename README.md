@@ -170,23 +170,27 @@ Watch it come up and read the connection details:
 
 ```bash
 kubectl get instance my-instance -w
+kubectl wait instance/my-instance --for=condition=Ready --timeout=20m
 kubectl get instance my-instance -o jsonpath='{.status.connection}'
 ```
 
 Credentials are in the secret named by `.status.connection.credentialsSecretRef`.
 
-`status.phase` follows what the operator is doing, and `status.message` says why:
+The provider reports what it observes, and OpenEverest turns it into the Instance's conditions
+the same way for every provider. `status.phase` is `Pending` until Cassandra has first served
+clients, then `Provisioned`. Read the conditions for the rest:
 
-| Phase | When |
+| Fact | How this provider determines it |
 |---|---|
-| `Provisioning` | the cluster is being created |
-| `Ready` | every operation has finished and the nodes are up |
-| `Updating` | nodes are being added, removed, restarted, updated or resized, or a pod is not ready, for example after a node failure |
-| `Restoring` | a `Restore` is running; Medusa stops and restarts every node |
-| `Failed` | the operator reports an error or refuses a change, for example a volume that cannot be resized |
+| **`Ready`** | k8ssandra-operator has observed the latest spec, no datacenter operation is running, every engine pod the datacenter asks for exists and is ready, Reaper is ready when the `repair` component is set, and no restore runs. Until then the `Ready` message says what is waited for: `Adding Cassandra nodes`, `Removing Cassandra nodes`, `Restarting Cassandra nodes`, `Rolling out changes`, `Waiting for Cassandra nodes to become ready`, `Waiting for Reaper to become ready`, … |
+| **`Available`** | `True` while at least one Cassandra pod is ready, so it stays `True` through a rolling change; `False` with `NoNodeReady` when none is, or `NodesStopped` while the datacenter is stopped (a Medusa restore stops it) |
+| **Problems** (`EngineHealthy`) | `ClusterError` when k8ssandra-operator reports an error; `ChangeRejected` when cass-operator refuses a change, for example a volume that cannot be resized. A rejected change needs the spec to be corrected, so it stalls the Instance at once |
+| **Operations** | `Upgrading` (reason `RollingOutImage`) while engine pods still run another Cassandra image than the version asks for; `StorageResizing` while cass-operator resizes volumes; `Restoring` while a `Restore` runs |
+| **Connection details** | Published as soon as clients can connect, and kept current while a change rolls out |
 
-`status.components` reports the ready and total `engine` pods. Medusa runs as their sidecar,
-so `backupAgent` has no entry of its own.
+`status.components` reports the ready, total and desired pods of `engine` and, with the
+`repair` component, of Reaper's single pod. Medusa runs as a sidecar of the Cassandra pods, so
+`backupAgent` has no entry of its own.
 
 ## Monitoring
 
@@ -246,7 +250,7 @@ spec:
 - Adding or removing the component does not restart Cassandra. Removing it leaves the
   `reaper_db` keyspace in place.
 - The component is opt-in: an `Instance` without it is accepted with a warning. While Reaper
-  is not ready the `Instance` shows `Updating`.
+  is not ready the `Instance` is not `Ready`, and its `Ready` message says it waits for Reaper.
 
 ## Topologies
 

@@ -3,5 +3,8 @@ kind: Instance
 metadata:
   name: cass-lifecycle
 status:
-  phase: Updating
-  message: Waiting for Cassandra nodes to become ready
+  phase: Provisioned
+  (conditions[?type == 'Ready'] | [0].status): 'False'
+  (conditions[?type == 'Ready'] | [0].reason): ApplyingChanges
+  (conditions[?type == 'Ready'] | [0].message): Waiting for Cassandra nodes to become ready
+  (conditions[?type == 'Available'] | [0].status): 'True'

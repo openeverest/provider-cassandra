@@ -1,0 +1,12 @@
+# While the new image rolls out node by node, the upgrade is named and clients
+# keep connecting to the nodes that are up.
+apiVersion: core.openeverest.io/v1alpha1
+kind: Instance
+metadata:
+  name: cass-lifecycle
+status:
+  phase: Provisioned
+  (conditions[?type == 'Upgrading'] | [0].status): 'True'
+  (conditions[?type == 'Upgrading'] | [0].reason): RollingOutImage
+  (conditions[?type == 'Ready'] | [0].reason): Upgrading
+  (conditions[?type == 'Available'] | [0].status): 'True'

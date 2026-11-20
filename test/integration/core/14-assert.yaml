@@ -29,5 +29,8 @@ kind: Instance
 metadata:
   name: cass-core
 status:
-  phase: Updating
-  message: Waiting for Reaper to become ready
+  phase: Provisioned
+  (conditions[?type == 'Ready'] | [0].status): 'False'
+  (conditions[?type == 'Ready'] | [0].reason): ApplyingChanges
+  (conditions[?type == 'Ready'] | [0].message): Waiting for Reaper to become ready
+  (components[?name == 'repair'] | [0].desiredReplicas): 1
