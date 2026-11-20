@@ -161,6 +161,9 @@ spec:
 
 Component names are defined by this provider — see [definition/provider.yaml](definition/provider.yaml).
 `spec.version` and `spec.topology` are optional; the provider defaults apply.
+The UI takes CPU in cores, fractions included (`1.5`), and memory, disk and the JVM heap sizes in
+Gi, and writes them as quantity strings; a value it did not change keeps its stored form (for
+example `3584Mi`).
 More examples live in [examples/](examples/).
 
 Watch it come up and read the connection details:

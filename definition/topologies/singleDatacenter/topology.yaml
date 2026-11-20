@@ -103,34 +103,33 @@ ui:
                             components:
                                 cpu:
                                     path: spec.components.engine.resources.limits.cpu
-                                    uiType: number
+                                    uiType: quantity
                                     fieldParams:
                                         label: CPU
+                                        unitLabel: CPU
                                         defaultValue: 1
-                                        step: 1
                                     validation:
                                         min: 1
+                                        # Millicore precision, the finest Kubernetes keeps.
+                                        multipleOf: 0.001
                                         required: true
                                 memory:
                                     path: spec.components.engine.resources.limits.memory
-                                    uiType: number
+                                    uiType: quantity
                                     fieldParams:
                                         label: Memory
                                         defaultValue: 4
-                                        step: 0.1
-                                        badge: Gi
-                                        badgeToApi: true
+                                        unit: Gi
                                     validation:
                                         min: 1
                                         required: true
                                 disk:
                                     path: spec.components.engine.storage.size
-                                    uiType: number
+                                    uiType: quantity
                                     fieldParams:
                                         label: Disk
                                         defaultValue: 25
-                                        badge: Gi
-                                        badgeToApi: true
+                                        unit: Gi
                                     validation:
                                         min: 1
                                         int: true
@@ -138,7 +137,7 @@ ui:
                                         modes:
                                             edit:
                                                 celExpressions:
-                                                    - celExpr: spec.components.engine.storage.size >= original.spec.components.engine.storage.size
+                                                    - celExpr: double(spec.components.engine.storage.size) >= double(original.spec.components.engine.storage.size)
                                                       message: Disk size cannot be decreased
                     componentsOrder:
                         - numberOfNodes
@@ -167,24 +166,27 @@ ui:
                     components:
                         heapInitialSize:
                             path: spec.components.engine.parameters.heapInitialSize
-                            uiType: number
+                            uiType: quantity
                             fieldParams:
                                 label: Initial heap size
-                                step: 0.1
-                                badge: Gi
-                                badgeToApi: true
+                                unit: Gi
                             validation:
-                                min: 0
+                                min: 0.5
+                                celExpressions:
+                                    # The JVM refuses to start when -Xms exceeds -Xmx, as Validate checks.
+                                    - celExpr: "!has(spec.components.engine.parameters.heapInitialSize) || !has(spec.components.engine.parameters.heapMaxSize) || double(spec.components.engine.parameters.heapInitialSize) <= double(spec.components.engine.parameters.heapMaxSize)"
+                                      message: Initial heap size cannot be greater than max heap size
                         heapMaxSize:
                             path: spec.components.engine.parameters.heapMaxSize
-                            uiType: number
+                            uiType: quantity
                             fieldParams:
                                 label: Max heap size
-                                step: 0.1
-                                badge: Gi
-                                badgeToApi: true
+                                unit: Gi
                             validation:
-                                min: 0
+                                min: 0.5
+                                celExpressions:
+                                    - celExpr: "!has(spec.components.engine.parameters.heapInitialSize) || !has(spec.components.engine.parameters.heapMaxSize) || double(spec.components.engine.parameters.heapInitialSize) <= double(spec.components.engine.parameters.heapMaxSize)"
+                                      message: Initial heap size cannot be greater than max heap size
             componentsOrder:
                 - storageClass
                 - heapSize
