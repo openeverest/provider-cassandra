@@ -83,8 +83,14 @@ spec:
         - patch:
             file: 20-upgrade-version.yaml
         - assert:
+            timeout: 5m
+            file: 20-upgrading.yaml
+        - assert:
             timeout: 20m
             file: 20-assert.yaml
+        - assert:
+            timeout: 5m
+            file: 20-upgraded.yaml
         - script:
             content: &check-data |
               ${PROVIDER_ROOT_PATH}/test/e2e-cluster/cql.sh $NAMESPACE cass-lifecycle \

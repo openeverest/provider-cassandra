@@ -60,4 +60,8 @@ kind: Instance
 metadata:
   name: cass-core
 status:
-  phase: Provisioning
+  phase: Pending
+  (conditions[?type == 'Ready'] | [0].status): 'False'
+  (conditions[?type == 'Ready'] | [0].reason): Creating
+  (conditions[?type == 'Ready'] | [0].message): Cluster is being created
+  (conditions[?type == 'Available'] | [0].status): 'False'

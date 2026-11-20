@@ -3,5 +3,7 @@ kind: Instance
 metadata:
   name: cass-core
 status:
-  phase: Updating
-  message: Adding Cassandra nodes
+  phase: Provisioned
+  (conditions[?type == 'Ready'] | [0].status): 'False'
+  (conditions[?type == 'Ready'] | [0].reason): ApplyingChanges
+  (conditions[?type == 'Ready'] | [0].message): Adding Cassandra nodes

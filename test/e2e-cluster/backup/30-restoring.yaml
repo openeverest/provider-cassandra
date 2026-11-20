@@ -3,4 +3,7 @@ kind: Instance
 metadata:
   name: cass-backup
 status:
-  phase: Restoring
+  phase: Provisioned
+  (conditions[?type == 'Restoring'] | [0].status): 'True'
+  (conditions[?type == 'Ready'] | [0].status): 'False'
+  (conditions[?type == 'Ready'] | [0].reason): Restoring

@@ -3,5 +3,9 @@ kind: Instance
 metadata:
   name: cass-lifecycle
 status:
-  phase: Updating
-  message: Adding Cassandra nodes
+  phase: Provisioned
+  (conditions[?type == 'Ready'] | [0].status): 'False'
+  (conditions[?type == 'Ready'] | [0].reason): ApplyingChanges
+  (conditions[?type == 'Ready'] | [0].message): Adding Cassandra nodes
+  # Cassandra serves clients from the nodes that are up.
+  (conditions[?type == 'Available'] | [0].status): 'True'
