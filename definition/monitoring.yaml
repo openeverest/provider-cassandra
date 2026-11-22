@@ -1,0 +1,14 @@
+# Monitoring contract, published by `provider-sdk generate` as
+# Provider.spec.monitoring.
+#
+# componentTypes: what each component type from provider.yaml exposes (its
+# kind is declared in provider.yaml). The management API serves Cassandra's
+# metrics on every Cassandra pod (container port "metrics", 9000, /metrics),
+# whatever the Instance asks for, so no exporter is switched on or off. Medusa
+# and Reaper publish nothing. There are no operator-native integrations:
+# monitoring extensions scrape the endpoints the provider publishes in
+# Instance.status.monitoring.sources.
+
+componentTypes:
+  cassandra:
+    metrics: Native

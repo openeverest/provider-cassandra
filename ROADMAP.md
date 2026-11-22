@@ -31,19 +31,16 @@ A single datacenter with one rack. See [README.md#capabilities](README.md#capabi
 | Heap sizing (`heapInitialSize`, `heapMaxSize`) | ✅ |
 | Medusa backups: on demand, scheduled, in-place restore, S3-compatible storage only | ✅ |
 | Retention (`retention`) | ⚠️ `count` only (`time` is rejected); applies to the whole cluster (highest value across schedules), not to each schedule |
-| Monitoring | 🚧 only sets `telemetry.prometheus.enabled` |
-| Status | ✅ ready/total `engine` pods in `status.components`; the phase follows the datacenter's conditions |
+| Monitoring | ✅ the management API's metrics endpoint is published for monitoring extensions |
+| Status | ✅ facts for the Instance conditions (converged, available, problems, operations, desired pods), from the datacenter's conditions and the engine pods |
 | Integration tests | 🚧 chainsaw skeleton; lifecycle steps are commented out |
 
 Gaps in the current code:
 
-- The `medusa` and `prometheus` entries in [definition/versions.yaml](definition/versions.yaml)
-  are not applied. The operator runs its own default Medusa image, so the pinned `0.22.3`
+- The `medusa` entry in [definition/versions.yaml](definition/versions.yaml) is not applied. The operator runs its own default Medusa image, so the pinned `0.22.3`
   is out of date (operator `1.32.x` ships Medusa `0.29`–`0.30`).
 - The provider ignores these `Instance` fields: `service`, `userSecretRef`,
   `dataSource` and `maintenance`.
-- The Medusa BackupClass description is still a `TODO`
-  ([definition/backupclasses/medusa/class.yaml](definition/backupclasses/medusa/class.yaml)).
 
 ---
 
@@ -58,11 +55,11 @@ Progress: [milestone 0.2](https://github.com/openeverest/provider-cassandra/mile
 |---|---|---|
 | Enable end-to-end integration tests (create → ready → scale → backup → restore → delete) | — | Turn on the commented-out chainsaw steps. Run against a real operator, not one scaled to 0 |
 | Align the version catalog with the operator | `medusa.containerImage`, `cassandra.serverVersion` | Apply the bundle's Medusa image, or drop it from the catalog. Add current 4.1.x / 5.0.x patch releases |
-| Per-component status (`status.components`) | `CassandraDatacenter.status.conditions`, pod readiness | Done: ready/total pods for `engine`; scaling, rollouts, resizes and recovering nodes show as `Updating`, a running restore as `Restoring`, a refused change as `Failed`. Medusa is a sidecar, so `backupAgent` has no entry |
+| Per-component status (`status.components`) | `CassandraDatacenter.status.conditions`, pod readiness | Done: ready/total pods for `engine`; scaling, rollouts and recovering nodes keep `Ready` False with what is waited for, upgrades, resizes and restores are named operations, a refused change is a problem. Medusa is a sidecar, so `backupAgent` has no entry |
 | Scheduling policy | `racks[].affinity`, `softPodAntiAffinity`, `tolerations` | Done for `components.engine.schedulingPolicy`: nodeSelector, tolerations and affinity. Pods prefer separate nodes by default; a user affinity replaces that, `{}` sets no constraints. K8ssandraCluster has no `schedulerName` or topology spread, and cass-operator drops pod affinity, so those are rejected. Instances created before keep one pod per node and reject `affinity` |
 | Bootstrap credentials | `cassandra.superuserSecretRef` | Map `spec.userSecretRef`. Validate the `username` / `password` keys |
 | Soft pod anti-affinity (dev/test) | `softPodAntiAffinity` | Done: the default only prefers separate nodes, so multi-node clusters run on small or single-node dev clusters |
-| Finish monitoring wiring | `cassandra.telemetry.prometheus`, `commonLabels` | Label ServiceMonitors so a Prometheus can discover them. Use the native metrics endpoint (4.1+) instead of MCAC. `MonitoringConfig` is PMM-only ([#8](https://github.com/openeverest/provider-cassandra/issues/8)), so drop the stale `monitoringConfigName` row from the README |
+| Finish monitoring wiring | management API `metrics` port | Done: the native metrics endpoint (9000) is published in `status.monitoring.sources` for monitoring extensions; the provider no longer creates ServiceMonitors through `telemetry.prometheus` |
 | Documentation | — | BackupClass description; document that retention applies to the whole cluster, and other Medusa limits |
 
 ## 0.3: Production readiness
@@ -102,7 +99,7 @@ Progress: [#27](https://github.com/openeverest/provider-cassandra/issues/27) ·
 | Item | Upstream mapping | Depends on |
 |---|---|---|
 | **Multi-datacenter topology** (in one Kubernetes cluster) | `cassandra.datacenters[]`, `rebuild.sourceDC`, decommission progress | 0.3 racks, 0.4 internode TLS. New `multiDatacenter` topology with one component per DC. Adding a DC runs a rebuild, and removing one runs a replication update followed by decommission |
-| Stop / resume an instance | `datacenters[].stopped` | A suspend trigger in the `Instance` spec (core already defines the `Suspending` / `Suspended` phases) |
+| Stop / resume an instance | `datacenters[].stopped` | A suspend trigger in the `Instance` spec (core does not define one yet) |
 | Day-2 operations: rolling restart, cleanup, rebuild, `upgradesstables`, compaction | `K8ssandraTask` → `CassandraTask` | An operations/actions API in core. Until then, scale-out cleanup and post-upgrade `upgradesstables` could run automatically |
 | Pending maintenance | — | Report provider-driven rolling restarts (e.g. after an operator upgrade changes the pod spec) as `status.pendingMaintenance`, gated by `spec.maintenance` |
 | GCS / Azure Blob backup storage | `storageProperties.storageProvider` (`google_storage`, `azure_blobs`) | New BackupStorageClasses in core (only `s3` today; see [openeverest#2555](https://github.com/openeverest/openeverest/issues/2555)) |
@@ -144,7 +141,7 @@ A summary of which k8ssandra-operator (`1.32.x`) capabilities the provider cover
 | Restore into a new cluster | ✅ | 🗓 0.3 |
 | Medusa tuning (full/diff, bandwidth, chunking) | ✅ | 🗓 0.3 |
 | Reaper repairs + auto-scheduling | ✅ | ✅ 0.3 |
-| Prometheus ServiceMonitor | ✅ | 🚧 0.2 |
+| Prometheus ServiceMonitor | ✅ | ➖ replaced by monitoring extensions |
 | Vector telemetry | ✅ | 🗓 Later |
 | `K8ssandraTask` operations | ✅ | ⏸ needs core |
 | PITR | ❌ | ❌ |

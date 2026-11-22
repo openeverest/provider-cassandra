@@ -4,6 +4,7 @@ spec:
   componentTypes:
     cassandra:
       defaultVersion: 5.0.4
+      kind: cassandra
       versions:
         - image: k8ssandra/cass-management-api:4.1.9-ubi
           version: 4.1.9
@@ -14,11 +15,6 @@ spec:
       versions:
         - image: k8ssandra/medusa:0.22.3
           version: 0.22.3
-    prometheus:
-      defaultVersion: 2.55.1
-      versions:
-        - image: prom/prometheus:v2.55.1
-          version: 2.55.1
     reaper:
       defaultVersion: 5.1.0
       versions:
@@ -49,13 +45,15 @@ spec:
               type: string
           type: object
       type: cassandra
-    monitoring:
-      type: prometheus
     repair:
       type: reaper
   defaultVersion: "5.0"
+  monitoring:
+    componentTypes:
+      cassandra:
+        metrics: Native
   release:
-    version: 0.1.0
+    version: 0.2.0
   topologies:
     singleDatacenter:
       components:
@@ -82,11 +80,6 @@ spec:
                     tolerations: {}
                 storage: {}
                 version: {}
-        monitoring:
-          optional: true
-          supportedFields:
-            openAPIV3Schema:
-              properties: {}
         repair:
           optional: true
           supportedFields:
@@ -109,24 +102,26 @@ spec:
               components:
                 heapInitialSize:
                   fieldParams:
-                    badge: Gi
-                    badgeToApi: true
                     label: Initial heap size
-                    step: 0.1
+                    unit: Gi
                   path: spec.components.engine.parameters.heapInitialSize
-                  uiType: number
+                  uiType: quantity
                   validation:
-                    min: 0
+                    celExpressions:
+                      - celExpr: '!has(spec.components.engine.parameters.heapInitialSize) || !has(spec.components.engine.parameters.heapMaxSize) || double(spec.components.engine.parameters.heapInitialSize) <= double(spec.components.engine.parameters.heapMaxSize)'
+                        message: Initial heap size cannot be greater than max heap size
+                    min: 0.5
                 heapMaxSize:
                   fieldParams:
-                    badge: Gi
-                    badgeToApi: true
                     label: Max heap size
-                    step: 0.1
+                    unit: Gi
                   path: spec.components.engine.parameters.heapMaxSize
-                  uiType: number
+                  uiType: quantity
                   validation:
-                    min: 0
+                    celExpressions:
+                      - celExpr: '!has(spec.components.engine.parameters.heapInitialSize) || !has(spec.components.engine.parameters.heapMaxSize) || double(spec.components.engine.parameters.heapInitialSize) <= double(spec.components.engine.parameters.heapMaxSize)'
+                        message: Initial heap size cannot be greater than max heap size
+                    min: 0.5
               groupType: line
               uiType: group
             storageClass:
@@ -218,38 +213,36 @@ spec:
                       fieldParams:
                         defaultValue: 1
                         label: CPU
-                        step: 1
+                        unitLabel: CPU
                       path: spec.components.engine.resources.limits.cpu
-                      uiType: number
+                      uiType: quantity
                       validation:
                         min: 1
+                        multipleOf: 0.001
                         required: true
                     disk:
                       fieldParams:
-                        badge: Gi
-                        badgeToApi: true
                         defaultValue: 25
                         label: Disk
+                        unit: Gi
                       path: spec.components.engine.storage.size
-                      uiType: number
+                      uiType: quantity
                       validation:
                         int: true
                         min: 1
                         modes:
                           edit:
                             celExpressions:
-                              - celExpr: spec.components.engine.storage.size >= original.spec.components.engine.storage.size
+                              - celExpr: double(spec.components.engine.storage.size) >= double(original.spec.components.engine.storage.size)
                                 message: Disk size cannot be decreased
                         required: true
                     memory:
                       fieldParams:
-                        badge: Gi
-                        badgeToApi: true
                         defaultValue: 4
                         label: Memory
-                        step: 0.1
+                        unit: Gi
                       path: spec.components.engine.resources.limits.memory
-                      uiType: number
+                      uiType: quantity
                       validation:
                         min: 1
                         required: true
@@ -270,12 +263,10 @@ spec:
     - components:
         backupAgent: 0.22.3
         engine: 5.0.4
-        monitoring: 2.55.1
         repair: 5.1.0
       name: "5.0"
     - components:
         backupAgent: 0.22.3
         engine: 4.1.9
-        monitoring: 2.55.1
         repair: 5.1.0
       name: "4.1"

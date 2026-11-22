@@ -13,6 +13,8 @@ spec:
           core.openeverest.io/instance: cass-core
           core.openeverest.io/provider: provider-cassandra
     serverType: cassandra
+    # Monitoring extensions scrape the published endpoint: no ServiceMonitor.
+    (telemetry == null): true
     serverVersion: 4.1.9
     serverImage: k8ssandra/cass-management-api:4.1.9-ubi
     resources:
@@ -58,4 +60,8 @@ kind: Instance
 metadata:
   name: cass-core
 status:
-  phase: Provisioning
+  phase: Pending
+  (conditions[?type == 'Ready'] | [0].status): 'False'
+  (conditions[?type == 'Ready'] | [0].reason): Creating
+  (conditions[?type == 'Ready'] | [0].message): Cluster is being created
+  (conditions[?type == 'Available'] | [0].status): 'False'

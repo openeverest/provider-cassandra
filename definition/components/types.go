@@ -29,8 +29,3 @@ type CassandraParameters struct {
 // Add fields here when the medusa component type needs parameters
 // beyond what the base Instance spec provides.
 type MedusaParameters struct{}
-
-// PrometheusParameters defines the parameters for prometheus components.
-// Add fields here when the prometheus component type needs parameters
-// beyond what the base Instance spec provides.
-type PrometheusParameters struct{}

@@ -8,7 +8,8 @@ spec:
     The provider's admission webhook: it rejects an invalid Instance with the
     field path, admits it while the provider is down, blocks an update only
     on errors the stored Instance did not already have, rejects another
-    provider's backup class, and warns about a missing user Secret.
+    provider's backup class, and warns about a missing user Secret. The
+    ClusterInstancePresets the chart installs are admitted as Instance specs.
     The k8ssandra-operator is not deployed, as in the core suite.
   # Scales the provider down, which every other test depends on.
   concurrent: false
@@ -24,6 +25,26 @@ spec:
       try:
         - assert:
             file: 00-assert.yaml
+
+    - name: presets-admitted
+      try:
+        - assert:
+            file: 05-assert.yaml
+        # chainsaw runs scripts with /bin/sh: POSIX sh only.
+        - script:
+            content: |
+              set -eu
+              for preset in $(kubectl get clusterinstancepresets -o name \
+                  -l app.kubernetes.io/name=provider-cassandra); do
+                kubectl get "$preset" -o json \
+                  | jq --arg ns "$NAMESPACE" '{
+                      apiVersion: "core.openeverest.io/v1alpha1",
+                      kind: "Instance",
+                      metadata: {name: ("itest-" + .metadata.name), namespace: $ns},
+                      spec: .spec
+                    }' \
+                  | kubectl apply --dry-run=server -f -
+              done
 
     - name: reject-invalid
       try:

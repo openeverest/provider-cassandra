@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	cassdcapi "github.com/k8ssandra/cass-operator/apis/cassandra/v1beta1"
@@ -15,6 +16,7 @@ import (
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 
 	backupv1alpha1 "github.com/openeverest/openeverest/v2/api/backup/v1alpha1"
@@ -50,7 +52,7 @@ func initializedCluster(progress cassdcapi.ProgressState, conds ...cassdcapi.Dat
 	}
 }
 
-func TestClusterStatus(t *testing.T) {
+func TestObserveCluster(t *testing.T) {
 	t.Parallel()
 
 	settled := []cassdcapi.DatacenterCondition{
@@ -100,55 +102,81 @@ func TestClusterStatus(t *testing.T) {
 	reaperRemoved := withReaper(reaperNotReady)
 	reaperRemoved.Spec.Reaper = nil
 
+	rejected := with(
+		dcCondition(cassdcapi.DatacenterValid, corev1.ConditionFalse, "shrinking PVC is not supported"),
+		dcCondition(cassdcapi.DatacenterResizingVolumes, corev1.ConditionTrue, ""))
+	// cass-operator stops before recording the rejected generation, so
+	// k8ssandra-operator's observedGeneration stays behind.
+	rejectedStale := initializedCluster(cassdcapi.ProgressUpdating, rejected...)
+	rejectedStale.Generation = 3
+
+	resizing := controller.Progressing("Resizing volumes").
+		WithOperation(corev1alpha1.ConditionStorageResizing, reasonResizingVolumes, "Resizing volumes")
+	// Nothing is waited for: Status decides convergence once it has seen the pods.
+	settledStatus := controller.Status{}
+
 	tests := map[string]struct {
 		cluster *k8ssandraapi.K8ssandraCluster
 		want    controller.Status
 	}{
-		"not initialized": {notInitialized, controller.Provisioning("Cluster is being created")},
-		"operator error":  {operatorError, controller.Failed("datacenter failed")},
-		"error None":      {noError, controller.Ready()},
-		"settled":         {initializedCluster(cassdcapi.ProgressReady, settled...), controller.Ready()},
+		"not initialized": {notInitialized, controller.Progressing("Cluster is being created")},
+		"operator error": {
+			operatorError,
+			controller.Progressing("datacenter failed").WithProblem(reasonClusterError, "datacenter failed"),
+		},
+		"error None": {noError, settledStatus},
+		"settled":    {initializedCluster(cassdcapi.ProgressReady, settled...), settledStatus},
 		"scale-out names the scale-out, not the rollout": {
 			initializedCluster(cassdcapi.ProgressUpdating, with(
 				dcCondition(cassdcapi.DatacenterUpdating, corev1.ConditionTrue, ""),
 				dcCondition(cassdcapi.DatacenterScalingUp, corev1.ConditionTrue, ""))...),
-			controller.Updating("Adding Cassandra nodes"),
+			controller.Progressing("Adding Cassandra nodes"),
 		},
 		"scale-in": {
 			initializedCluster(cassdcapi.ProgressUpdating, with(dcCondition(cassdcapi.DatacenterScalingDown, corev1.ConditionTrue, ""))...),
-			controller.Updating("Removing Cassandra nodes"),
+			controller.Progressing("Removing Cassandra nodes"),
 		},
 		"rolling update": {
 			initializedCluster(cassdcapi.ProgressUpdating, with(dcCondition(cassdcapi.DatacenterUpdating, corev1.ConditionTrue, ""))...),
-			controller.Updating("Rolling out changes"),
+			controller.Progressing("Rolling out changes"),
 		},
-		"volume resize": {
+		"volume resize is a named operation": {
 			initializedCluster(cassdcapi.ProgressUpdating, with(dcCondition(cassdcapi.DatacenterResizingVolumes, corev1.ConditionTrue, ""))...),
-			controller.Updating("Resizing volumes"),
+			resizing,
 		},
-		"rejected change wins over the operation it interrupts": {
-			initializedCluster(cassdcapi.ProgressUpdating, with(
-				dcCondition(cassdcapi.DatacenterValid, corev1.ConditionFalse, "shrinking PVC is not supported"),
-				dcCondition(cassdcapi.DatacenterResizingVolumes, corev1.ConditionTrue, ""))...),
-			controller.Failed("shrinking PVC is not supported"),
+		"stopped nodes cannot serve clients": {
+			initializedCluster(cassdcapi.ProgressUpdating, with(dcCondition(cassdcapi.DatacenterStopped, corev1.ConditionTrue, ""))...),
+			controller.Progressing("Cassandra nodes are stopped").WithUnavailable(reasonNodesStopped, "Cassandra nodes are stopped"),
+		},
+		"a rejected change only a person can fix": {
+			initializedCluster(cassdcapi.ProgressUpdating, rejected...),
+			controller.Progressing("shrinking PVC is not supported").
+				WithTerminalProblem(reasonChangeRejected, "shrinking PVC is not supported").
+				WithOperation(corev1alpha1.ConditionStorageResizing, reasonResizingVolumes, "Resizing volumes"),
+		},
+		"a rejection while observedGeneration lags": {
+			rejectedStale,
+			controller.Progressing("shrinking PVC is not supported").
+				WithTerminalProblem(reasonChangeRejected, "shrinking PVC is not supported").
+				WithOperation(corev1alpha1.ConditionStorageResizing, reasonResizingVolumes, "Resizing volumes"),
 		},
 		"nodes coming back without an operation": {
 			initializedCluster(cassdcapi.ProgressUpdating, settled...),
-			controller.Updating("Waiting for Cassandra nodes to become ready"),
+			controller.Progressing("Waiting for Cassandra nodes to become ready"),
 		},
-		"spec not observed yet": {staleStatus, controller.Updating("Applying changes")},
-		"no observedGeneration": {noObservedGeneration, controller.Ready()},
-		"no datacenter status":  {noDatacenterStatus, controller.Ready()},
-		"Reaper ready":          {withReaper(reaperReady), controller.Ready()},
-		"Reaper not ready":      {withReaper(reaperNotReady), controller.Updating("Waiting for Reaper to become ready")},
-		"Reaper not reported":   {withReaper(nil), controller.Updating("Waiting for Reaper to become ready")},
-		"Reaper removed":        {reaperRemoved, controller.Ready()},
+		"spec not observed yet": {staleStatus, controller.Progressing("Applying changes")},
+		"no observedGeneration": {noObservedGeneration, settledStatus},
+		"no datacenter status":  {noDatacenterStatus, settledStatus},
+		"Reaper ready":          {withReaper(reaperReady), settledStatus},
+		"Reaper not ready":      {withReaper(reaperNotReady), controller.Progressing("Waiting for Reaper to become ready")},
+		"Reaper not reported":   {withReaper(nil), controller.Progressing("Waiting for Reaper to become ready")},
+		"Reaper removed":        {reaperRemoved, settledStatus},
 	}
 
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			assert.Equal(t, tc.want, clusterStatus(tc.cluster))
+			assert.Equal(t, tc.want, observeCluster(tc.cluster))
 		})
 	}
 }
@@ -202,30 +230,41 @@ func TestStatusRestore(t *testing.T) {
 	failed := stopped()
 	failed.Status.Error = "datacenter failed"
 
+	stoppedStatus := controller.Progressing("Cassandra nodes are stopped").
+		WithUnavailable(reasonNodesStopped, "Cassandra nodes are stopped").
+		WithDesiredReplicas(common.ComponentEngine, 3)
+	restoring := func(s controller.Status) controller.Status {
+		s = s.WithOperation(corev1alpha1.ConditionRestoring, corev1alpha1.ConditionRestoring, "Restore is running")
+		s.Message = "Restore is running"
+		return s
+	}
+
 	tests := map[string]struct {
 		cluster  *k8ssandraapi.K8ssandraCluster
 		restores []client.Object
 		want     controller.Status
 	}{
-		"running restore owns the phase": {
+		"a running restore is named": {
 			stopped(),
 			[]client.Object{restore("done", instance.Name, backupv1alpha1.RestoreStateSucceeded), restore("new", instance.Name, "")},
-			controller.Restoring("Restore is running"),
+			restoring(stoppedStatus),
 		},
-		"finished restores do not": {
+		"finished restores are not": {
 			stopped(),
 			[]client.Object{restore("ok", instance.Name, backupv1alpha1.RestoreStateSucceeded), restore("bad", instance.Name, backupv1alpha1.RestoreStateFailed)},
-			controller.Updating("Cassandra nodes are stopped"),
+			stoppedStatus,
 		},
-		"another Instance's restore does not": {
+		"another Instance's restore is not": {
 			stopped(),
 			[]client.Object{restore("other", "other-instance", backupv1alpha1.RestoreStateRunning)},
-			controller.Updating("Cassandra nodes are stopped"),
+			stoppedStatus,
 		},
 		"an operator error still shows": {
 			failed,
 			[]client.Object{restore("new", instance.Name, backupv1alpha1.RestoreStateRunning)},
-			controller.Failed("datacenter failed"),
+			restoring(controller.Progressing("datacenter failed").
+				WithProblem(reasonClusterError, "datacenter failed").
+				WithDesiredReplicas(common.ComponentEngine, 3)),
 		},
 	}
 	for name, tc := range tests {
@@ -250,35 +289,78 @@ func TestStatusRestore(t *testing.T) {
 	}
 }
 
-// cass-operator does not report a failed node in the datacenter status.
+// cass-operator does not report a failed node in the datacenter status, nor
+// how far a new image has rolled out: the pods tell.
 func TestStatusEnginePods(t *testing.T) {
 	t.Parallel()
 
+	const (
+		oldImage = "k8ssandra/cass-management-api:4.1.9-ubi"
+		newImage = "k8ssandra/cass-management-api:5.0.4-ubi"
+	)
+	two := int32(2)
 	instance := newTestInstance(map[string]corev1alpha1.ComponentSpec{
-		common.ComponentEngine: {Type: common.ComponentTypeCassandra},
+		common.ComponentEngine: {Type: common.ComponentTypeCassandra, Replicas: &two},
+		common.ComponentRepair: {Type: common.ComponentTypeReaper},
 	}, nil)
-	pod := func(name string, labels map[string]string, ready corev1.ConditionStatus) *corev1.Pod {
+	pod := func(name string, labels map[string]string, ready corev1.ConditionStatus, image string) *corev1.Pod {
 		return &corev1.Pod{
 			ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: instance.Namespace, Labels: labels},
-			Status:     corev1.PodStatus{Conditions: []corev1.PodCondition{{Type: corev1.PodReady, Status: ready}}},
+			Spec: corev1.PodSpec{Containers: []corev1.Container{
+				{Name: "server-system-logger", Image: "k8ssandra/system-logger"},
+				{Name: "cassandra", Image: image},
+			}},
+			Status: corev1.PodStatus{Conditions: []corev1.PodCondition{{Type: corev1.PodReady, Status: ready}}},
 		}
 	}
 	engine := map[string]string{controller.InstanceLabel: instance.Name, controller.ComponentLabel: common.ComponentEngine}
 	other := map[string]string{controller.InstanceLabel: "other-instance", controller.ComponentLabel: common.ComponentEngine}
-	terminating := pod("node-1", engine, corev1.ConditionTrue)
+	terminating := pod("node-1", engine, corev1.ConditionTrue, newImage)
 	terminating.DeletionTimestamp = ptr.To(metav1.Now())
 	terminating.Finalizers = []string{"test/hold"}
 
+	details := controller.ConnectionDetails{
+		Type: "cassandra", Provider: "cassandra", Host: "test-instance-dc1-service", Port: "9042", Username: "u", Password: "p",
+	}
+	type want struct {
+		converged bool
+		message   string
+		available controller.Availability
+		reason    string
+		upgrading string
+		details   bool
+	}
+	ready := want{converged: true, available: controller.Available, details: true}
+	nodesNotReady := want{message: messageNodesNotReady, available: controller.Available, details: true}
+
 	tests := map[string]struct {
 		pods []client.Object
-		want corev1alpha1.InstancePhase
+		want want
 	}{
-		"all pods ready":            {[]client.Object{pod("node-0", engine, corev1.ConditionTrue), pod("node-1", engine, corev1.ConditionTrue)}, corev1alpha1.InstancePhaseReady},
-		"a pod is not ready":        {[]client.Object{pod("node-0", engine, corev1.ConditionTrue), pod("node-1", engine, corev1.ConditionFalse)}, corev1alpha1.InstancePhaseUpdating},
-		"a pod is terminating":      {[]client.Object{pod("node-0", engine, corev1.ConditionTrue), terminating}, corev1alpha1.InstancePhaseUpdating},
-		"another Instance's pod":    {[]client.Object{pod("node-0", engine, corev1.ConditionTrue), pod("node-1", engine, corev1.ConditionTrue), pod("x-0", other, corev1.ConditionFalse)}, corev1alpha1.InstancePhaseReady},
-		"a pod is missing":          {[]client.Object{pod("node-0", engine, corev1.ConditionTrue)}, corev1alpha1.InstancePhaseUpdating},
-		"no pods, as without nodes": {nil, corev1alpha1.InstancePhaseReady},
+		"all pods ready": {[]client.Object{pod("node-0", engine, corev1.ConditionTrue, newImage), pod("node-1", engine, corev1.ConditionTrue, newImage)}, ready},
+		"a pod is not ready": {
+			[]client.Object{pod("node-0", engine, corev1.ConditionTrue, newImage), pod("node-1", engine, corev1.ConditionFalse, newImage)},
+			nodesNotReady,
+		},
+		"a pod is terminating": {[]client.Object{pod("node-0", engine, corev1.ConditionTrue, newImage), terminating}, nodesNotReady},
+		"another Instance's pod": {
+			[]client.Object{pod("node-0", engine, corev1.ConditionTrue, newImage), pod("node-1", engine, corev1.ConditionTrue, newImage), pod("x-0", other, corev1.ConditionFalse, oldImage)},
+			ready,
+		},
+		"a pod is missing": {[]client.Object{pod("node-0", engine, corev1.ConditionTrue, newImage)}, nodesNotReady},
+		"no pod is ready": {
+			[]client.Object{pod("node-0", engine, corev1.ConditionFalse, newImage), pod("node-1", engine, corev1.ConditionFalse, newImage)},
+			want{message: messageNodesNotReady, available: controller.Unavailable, reason: reasonNoNodeReady},
+		},
+		"a new image rolls out": {
+			[]client.Object{pod("node-0", engine, corev1.ConditionTrue, newImage), pod("node-1", engine, corev1.ConditionFalse, oldImage)},
+			want{message: messageNodesNotReady, available: controller.Available, upgrading: "1 of 2 Cassandra nodes run 5.0.4", details: true},
+		},
+		"the last old node restarts with the new image": {
+			[]client.Object{pod("node-0", engine, corev1.ConditionTrue, newImage), pod("node-1", engine, corev1.ConditionTrue, oldImage)},
+			want{converged: true, available: controller.Available, upgrading: "1 of 2 Cassandra nodes run 5.0.4", details: true},
+		},
+		"no pods, as without nodes": {nil, want{converged: true, details: true}},
 	}
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -290,7 +372,10 @@ func TestStatusEnginePods(t *testing.T) {
 			}
 			cluster := initializedCluster(cassdcapi.ProgressReady)
 			cluster.Spec.Cassandra = &k8ssandraapi.CassandraClusterTemplate{
-				Datacenters: []k8ssandraapi.CassandraDatacenterTemplate{{Size: 2}},
+				DatacenterOptions: k8ssandraapi.DatacenterOptions{ServerVersion: "5.0.4", ServerImage: newImage},
+				Datacenters: []k8ssandraapi.CassandraDatacenterTemplate{
+					{Meta: k8ssandraapi.EmbeddedObjectMeta{Name: "dc1"}, Size: 2},
+				},
 			}
 			objs := append(tc.pods, cluster, secret)
 			scheme := runtime.NewScheme()
@@ -305,7 +390,52 @@ func TestStatusEnginePods(t *testing.T) {
 
 			got, err := New().Status(c)
 			require.NoError(t, err)
-			assert.Equal(t, tc.want, got.Phase, got.Message)
+
+			assert.Equal(t, tc.want.converged, got.Converged, got.Message)
+			assert.Equal(t, tc.want.message, got.Message)
+			assert.Equal(t, tc.want.available, got.Available)
+			assert.Equal(t, tc.want.reason, got.AvailableReason)
+			assert.Empty(t, got.Problems)
+			var upgrading []controller.Operation
+			if tc.want.upgrading != "" {
+				upgrading = []controller.Operation{{Type: corev1alpha1.ConditionUpgrading, Reason: reasonRollingOutImage, Message: tc.want.upgrading}}
+			}
+			assert.Equal(t, upgrading, got.Operations)
+			if tc.want.details {
+				assert.Equal(t, details, got.ConnectionDetails)
+			} else {
+				assert.Zero(t, got.ConnectionDetails, "nobody can connect yet")
+			}
+			assert.ElementsMatch(t, []controller.ComponentReplicas{
+				{Component: common.ComponentEngine, Desired: 2},
+				{Component: common.ComponentRepair, Desired: 1},
+			}, got.DesiredReplicas)
 		})
 	}
+}
+
+// Before the K8ssandraCluster exists, the Instance still says how many pods
+// it will have; an error reading it is not mistaken for its absence.
+func TestStatusNoCluster(t *testing.T) {
+	t.Parallel()
+
+	instance := newTestInstance(map[string]corev1alpha1.ComponentSpec{
+		common.ComponentEngine: {Type: common.ComponentTypeCassandra},
+	}, nil)
+
+	got, err := New().Status(fakeClientContext(instance))
+	require.NoError(t, err)
+	assert.Equal(t, controller.Progressing("Waiting for K8ssandraCluster").
+		WithDesiredReplicas(common.ComponentEngine, defaultReplicas), got)
+
+	boom := errors.New("boom")
+	scheme := runtime.NewScheme()
+	require.NoError(t, k8ssandraapi.AddToScheme(scheme))
+	cl := fake.NewClientBuilder().WithScheme(scheme).WithInterceptorFuncs(interceptor.Funcs{
+		Get: func(context.Context, client.WithWatch, client.ObjectKey, client.Object, ...client.GetOption) error {
+			return boom
+		},
+	}).Build()
+	_, err = New().Status(controller.NewContext(context.Background(), cl, instance, common.ProviderName))
+	require.ErrorIs(t, err, boom)
 }

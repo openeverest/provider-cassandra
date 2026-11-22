@@ -31,7 +31,7 @@ backupStorageClasses:
           # Medusa can turn verification off (ssl_verify) but has no CA field.
           customCA: None
           insecureSkipVerify: Supported
-description: 'TODO: describe what this BackupClass does.'
+description: Backs up and restores Cassandra with Medusa, which k8ssandra-operator runs as a sidecar of every Cassandra node. Writes to S3-compatible storage; restores in place.
 displayName: Medusa Backup Class
 parametersSchema:
     openAPIV3Schema: MedusaBackupParameters

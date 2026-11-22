@@ -36,8 +36,10 @@ if os.path.exists(local_env_file):
 # the core from source in a separate Tilt instance.
 install_openeverest = str2bool(os.getenv('INSTALL_OPENEVEREST', 'true'))
 
-# Released OpenEverest core version to install. Empty means latest.
-openeverest_version = os.getenv('OPENEVEREST_VERSION', '')
+# Released OpenEverest core version to install: the one this provider supports
+# (see the README's compatibility table). Empty means Helm's latest stable,
+# which skips pre-releases.
+openeverest_version = os.getenv('OPENEVEREST_VERSION', '2.0.0-alpha.1')
 
 # Helm repository that hosts the OpenEverest core chart.
 openeverest_helm_repo = os.getenv(
@@ -100,18 +102,6 @@ if install_openeverest:
         '--set', 'server.initialAdminPassword={0}'.format(ui_admin_password),
         '--set', 'telemetry=false',
         '--set', 'upgrade.preflightChecks=false',
-        # Keep the dev install lean: skip kube-state-metrics and any default
-        # monitoring resources. The victoria-metrics-operator subchart itself
-        # (aliased "monitoring") must stay enabled -- its `crds/` dependency is
-        # gated by the same top-level condition, and everest-controller
-        # unconditionally watches VMAgent CRs at startup (see
-        # internal/controller/monitoring/monitoringconfig_controller.go); if
-        # the CRD is missing, WaitForCacheSync times out and the manager exits
-        # (crash loop). Scale the operator Deployment itself to 0 so the CRDs
-        # (and RBAC) are installed without actually running the operator pod.
-        '--set', 'kube-state-metrics.enabled=false',
-        '--set', 'monitoring.replicaCount=0',
-        '--set', 'createMonitoringResources=false',
     ]
     if openeverest_version:
         core_flags = core_flags + ['--version', openeverest_version]

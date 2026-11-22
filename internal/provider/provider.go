@@ -8,14 +8,12 @@ import (
 	cassdcapi "github.com/k8ssandra/cass-operator/apis/cassandra/v1beta1"
 	k8ssandraapi "github.com/k8ssandra/k8ssandra-operator/apis/k8ssandra/v1alpha1"
 	medusaapi "github.com/k8ssandra/k8ssandra-operator/apis/medusa/v1alpha1"
-	telemetryapi "github.com/k8ssandra/k8ssandra-operator/apis/telemetry/v1alpha1"
 	"github.com/k8ssandra/k8ssandra-operator/pkg/meta"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/validation/field"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
@@ -200,7 +198,8 @@ func (p *Provider) buildCassandra(c *controller.Context) (*k8ssandraapi.Cassandr
 	podLabels := c.PodLabels(common.ComponentEngine)
 	cassandra := &k8ssandraapi.CassandraClusterTemplate{
 		// Only the Cassandra pods carry component labels: Medusa runs as their
-		// sidecar and monitoring only adds a ServiceMonitor.
+		// sidecar. Monitoring extensions select the pods by these labels (see
+		// MonitoringSources).
 		Meta: meta.CassandraClusterMeta{
 			Pods: meta.Tags{Labels: podLabels},
 		},
@@ -210,7 +209,6 @@ func (p *Provider) buildCassandra(c *controller.Context) (*k8ssandraapi.Cassandr
 			ServerImage:     image,
 			StorageConfig:   buildStorageConfig(engine.Storage),
 			Resources:       resources,
-			Telemetry:       buildTelemetry(c),
 			CassandraConfig: buildCassandraConfig(jvmOptions),
 		},
 		Datacenters: []k8ssandraapi.CassandraDatacenterTemplate{
@@ -224,21 +222,6 @@ func (p *Provider) buildCassandra(c *controller.Context) (*k8ssandraapi.Cassandr
 		return nil, err
 	}
 	return cassandra, nil
-}
-
-// buildTelemetry enables k8ssandra-operator's native Prometheus
-// ServiceMonitor creation when the Instance declares a monitoring
-// component. Returns nil (no telemetry resources) when the component is
-// absent, matching its "optional" declaration in the topology definition.
-func buildTelemetry(c *controller.Context) *telemetryapi.TelemetrySpec {
-	if _, ok := c.Instance().Spec.Components[common.ComponentMonitoring]; !ok {
-		return nil
-	}
-	return &telemetryapi.TelemetrySpec{
-		Prometheus: &telemetryapi.PrometheusTelemetrySpec{
-			Enabled: ptr.To(true),
-		},
-	}
 }
 
 // existingCassandra returns the Cassandra spec of this Instance's

@@ -49,7 +49,7 @@ lifecycle work is delegated to the operator.
 
 | provider-cassandra | OpenEverest | k8ssandra-operator | Kubernetes |
 |---|---|---|---|
-| `0.2.x` | `2.0.0-dev.5` | `1.34.x` | `1.30` – `1.34` |
+| `0.2.x` | `2.0.0-alpha.1` | `1.34.x` | `1.32` – `1.34` |
 | `0.1.x` | `2.0.0-dev.1` | `1.34.x` | `1.30` – `1.34` |
 
 ## Capabilities
@@ -63,7 +63,7 @@ provider itself is covered under [Installation](#installation).
 | Horizontal scaling | ✅ | `spec.components.engine.replicas` |
 | Vertical scaling (CPU / memory) | ✅ | `spec.components.engine.resources` |
 | Version upgrades | ✅ | of the deployed Cassandra version — change `spec.version`; see [Versions](#versions) |
-| Monitoring | 🚧 | optional `monitoring` component (Prometheus) — wiring in progress |
+| Monitoring | ✅ | Metrics of the Cassandra pods published for monitoring extensions through `spec.monitoring.destinations`. See [Monitoring](#monitoring) |
 | Repairs | ✅ | optional `repair` component (Reaper); see [Repairs](#repairs) |
 
 Stateful workloads additionally report:
@@ -79,13 +79,11 @@ Stateful workloads additionally report:
 
 ## Installation
 
-The provider chart is published to the repository's Helm chart repository:
+The provider chart is published as an OCI artifact on GHCR:
 
 ```bash
-helm repo add provider-cassandra https://openeverest.github.io/provider-cassandra/
-helm repo update
-helm install provider-cassandra provider-cassandra/provider-cassandra \
-  --version 0.1.0 \
+helm install provider-cassandra oci://ghcr.io/openeverest/charts/provider-cassandra \
+  --version 0.2.0 \
   --namespace everest-system
 ```
 
@@ -101,6 +99,11 @@ helm install provider-cassandra provider-cassandra/provider-cassandra \
   writes are admitted and the `Instance` reports the errors in its `Ready` condition. A
   missing object the `Instance` names, such as its user Secret, is never a reason to reject
   it: `kubectl` prints a warning, and the `Instance` reports it once created.
+- The chart installs a `ClusterInstancePreset` per topology, the starting points the UI offers
+  when you create an Instance in any namespace: `cassandra-singledatacenter` (3 nodes with
+  1 CPU, 4Gi and 25Gi each). Change or disable it, or add your own, under `presets` in the
+  chart values; `provider.shortName` prefixes their names. Presets pin the provider's default
+  [version](#versions) bundle and reference no namespaced objects.
 
 > [!IMPORTANT]
 > The operator's admission webhooks require [cert-manager](https://cert-manager.io) to be
@@ -109,8 +112,8 @@ helm install provider-cassandra provider-cassandra/provider-cassandra \
 Upgrade and uninstall:
 
 ```bash
-helm repo update
-helm upgrade provider-cassandra provider-cassandra/provider-cassandra --version 0.1.0
+helm upgrade provider-cassandra oci://ghcr.io/openeverest/charts/provider-cassandra \
+  --version 0.2.0 --namespace everest-system
 helm uninstall provider-cassandra --namespace everest-system
 ```
 
@@ -156,29 +159,71 @@ spec:
 
 Component names are defined by this provider — see [definition/provider.yaml](definition/provider.yaml).
 `spec.version` and `spec.topology` are optional; the provider defaults apply.
+The UI takes CPU in cores, fractions included (`1.5`), and memory, disk and the JVM heap sizes in
+Gi, and writes them as quantity strings; a value it did not change keeps its stored form (for
+example `3584Mi`).
 More examples live in [examples/](examples/).
 
 Watch it come up and read the connection details:
 
 ```bash
 kubectl get instance my-instance -w
+kubectl wait instance/my-instance --for=condition=Ready --timeout=20m
 kubectl get instance my-instance -o jsonpath='{.status.connection}'
 ```
 
 Credentials are in the secret named by `.status.connection.credentialsSecretRef`.
 
-`status.phase` follows what the operator is doing, and `status.message` says why:
+The provider reports what it observes, and OpenEverest turns it into the Instance's conditions
+the same way for every provider. `status.phase` is `Pending` until Cassandra has first served
+clients, then `Provisioned`. Read the conditions for the rest:
 
-| Phase | When |
+| Fact | How this provider determines it |
 |---|---|
-| `Provisioning` | the cluster is being created |
-| `Ready` | every operation has finished and the nodes are up |
-| `Updating` | nodes are being added, removed, restarted, updated or resized, or a pod is not ready, for example after a node failure |
-| `Restoring` | a `Restore` is running; Medusa stops and restarts every node |
-| `Failed` | the operator reports an error or refuses a change, for example a volume that cannot be resized |
+| **`Ready`** | k8ssandra-operator has observed the latest spec, no datacenter operation is running, every engine pod the datacenter asks for exists and is ready, Reaper is ready when the `repair` component is set, and no restore runs. Until then the `Ready` message says what is waited for: `Adding Cassandra nodes`, `Removing Cassandra nodes`, `Restarting Cassandra nodes`, `Rolling out changes`, `Waiting for Cassandra nodes to become ready`, `Waiting for Reaper to become ready`, … |
+| **`Available`** | `True` while at least one Cassandra pod is ready, so it stays `True` through a rolling change; `False` with `NoNodeReady` when none is, or `NodesStopped` while the datacenter is stopped (a Medusa restore stops it) |
+| **Problems** (`EngineHealthy`) | `ClusterError` when k8ssandra-operator reports an error; `ChangeRejected` when cass-operator refuses a change, for example a volume that cannot be resized. A rejected change needs the spec to be corrected, so it stalls the Instance at once |
+| **Operations** | `Upgrading` (reason `RollingOutImage`) while engine pods still run another Cassandra image than the version asks for; `StorageResizing` while cass-operator resizes volumes; `Restoring` while a `Restore` runs |
+| **Connection details** | Published as soon as clients can connect, and kept current while a change rolls out |
 
-`status.components` reports the ready and total `engine` pods. Medusa runs as their sidecar,
-so `backupAgent` has no entry of its own.
+`status.components` reports the ready, total and desired pods of `engine` and, with the
+`repair` component, of Reaper's single pod. Medusa runs as a sidecar of the Cassandra pods, so
+`backupAgent` has no entry of its own.
+
+## Monitoring
+
+Monitoring is an OpenEverest extension. The k8ssandra management API serves Cassandra's
+metrics on every Cassandra pod, on container port `metrics` (9000, `/metrics`). Once Cassandra
+is initialized, the provider publishes that endpoint in
+`Instance.status.monitoring.sources.metrics`, and a monitoring extension creates the scrape
+objects from it. To send an Instance's metrics somewhere:
+
+1. Install a monitoring extension, such as
+   [monitoring-prometheus](https://github.com/openeverest/monitoring-prometheus), which
+   installs its `MonitoringClass`.
+2. Create a `MonitoringDestination` of that class (in the UI: **Settings → Monitoring
+   destinations**).
+3. List it on the Instance (in the UI: the wizard's monitoring step, or the instance overview):
+
+```yaml
+spec:
+  monitoring:
+    destinations:
+      - name: metrics
+        destinationRef:
+          name: prometheus
+```
+
+The endpoint is always served, so adding or removing a destination restarts nothing. It stays
+published without a destination, so a scraper OpenEverest doesn't configure (your own
+`ServiceMonitor`, a Datadog agent, Grafana Alloy) can read its pod selector, port, path and
+scheme from the Instance status. Medusa and Reaper publish no metrics.
+
+> [!IMPORTANT]
+> The `monitoring` component (type `prometheus`) is gone: an Instance that lists it is
+> rejected. The provider no longer turns on k8ssandra-operator's Prometheus telemetry, and the
+> operator deletes the `ServiceMonitor` it created. To collect metrics, list a destination in
+> `spec.monitoring.destinations`.
 
 ## Repairs
 
@@ -203,7 +248,7 @@ spec:
 - Adding or removing the component does not restart Cassandra. Removing it leaves the
   `reaper_db` keyspace in place.
 - The component is opt-in: an `Instance` without it is accepted with a warning. While Reaper
-  is not ready the `Instance` shows `Updating`.
+  is not ready the `Instance` is not `Ready`, and its `Ready` message says it waits for Reaper.
 
 ## Topologies
 
@@ -213,15 +258,16 @@ spec:
 | `singleDatacenter` | ✅ | A single Cassandra datacenter (`dc1`) built from the `engine` component |
 <!-- END GENERATED: topologies -->
 
-The `backupAgent` (Medusa), `monitoring` (Prometheus) and `repair` (Reaper) components are optional.
+The `backupAgent` (Medusa) and `repair` (Reaper) components are optional. Monitoring is configured
+on the Instance (`spec.monitoring.destinations`), not as a component; see [Monitoring](#monitoring).
 
 ## Versions
 
 <!-- BEGIN GENERATED: versions -->
-| Version bundle | Default | cassandra | medusa | prometheus |
+| Version bundle | Default | cassandra | medusa | reaper |
 |---|---|---|---|---|
-| `5.0` | ✅ | `5.0.4` | `0.22.3` | `2.55.1` |
-| `4.1` | | `4.1.9` | `0.22.3` | `2.55.1` |
+| `5.0` | ✅ | `5.0.4` | `0.22.3` | `5.1.0` |
+| `4.1` | | `4.1.9` | `0.22.3` | `5.1.0` |
 <!-- END GENERATED: versions -->
 
 Source of truth: [definition/versions.yaml](definition/versions.yaml).
@@ -241,7 +287,7 @@ The technology-specific knobs worth knowing about:
 
 | Parameter | Applies to | Purpose |
 |---|---|---|
-| `monitoringConfigName` | `monitoring` | Monitoring configuration to attach the instance to |
+| `heapInitialSize`, `heapMaxSize` | `engine` | JVM heap (`-Xms`, `-Xmx`) as quantities; unset, k8ssandra-operator sizes the heap from the container memory |
 
 ## Development
 

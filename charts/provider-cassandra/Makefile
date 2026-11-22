@@ -3,7 +3,7 @@ HELM ?= helm
 # values to override
 IMAGE_PREFIX ?= ghcr.io/openeverest
 PROVIDER_IMAGE_NAME ?= provider-cassandra
-VERSION ?= 0.1.0
+VERSION ?= 0.2.0
 CHART_VERSION ?= $(VERSION)
 
 .PHONY: prepare-chart

@@ -19,11 +19,6 @@ componentTypes:
         versions:
             - version: "0.22.3"
               image: k8ssandra/medusa:0.22.3
-    prometheus:
-        defaultVersion: "2.55.1"
-        versions:
-            - version: "2.55.1"
-              image: prom/prometheus:v2.55.1
     # The version the bundled k8ssandra-operator ships. Unlike medusa, the
     # provider applies this image.
     reaper:
@@ -40,11 +35,9 @@ versions:
       components:
         engine: "5.0.4"
         backupAgent: "0.22.3"
-        monitoring: "2.55.1"
         repair: "5.1.0"
     - name: "4.1"
       components:
         engine: "4.1.9"
         backupAgent: "0.22.3"
-        monitoring: "2.55.1"
         repair: "5.1.0"

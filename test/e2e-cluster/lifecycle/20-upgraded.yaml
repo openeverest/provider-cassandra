@@ -1,0 +1,8 @@
+apiVersion: core.openeverest.io/v1alpha1
+kind: Instance
+metadata:
+  name: cass-lifecycle
+status:
+  phase: Provisioned
+  (conditions[?type == 'Upgrading'] | [0].status): 'False'
+  (conditions[?type == 'Ready'] | [0].status): 'True'
