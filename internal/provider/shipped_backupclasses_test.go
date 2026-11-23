@@ -15,6 +15,7 @@
 package provider
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -49,4 +50,16 @@ func TestShippedBackupClasses(t *testing.T) {
 		InsecureSkipVerify: backupv1alpha1.TLSOptionSupported,
 	}, entry.TLS)
 	assert.Equal(t, controller.TLSSupport{CustomCA: false, SkipVerify: true}, backupclasses.TLSSupport(backupClassName, s3class.ClassName))
+
+	// The UI reports a uiSchema section without components as an invalid
+	// schema, so a section ships only with at least one field.
+	if class.Spec.UISchema != nil {
+		var sections map[string]struct {
+			Components map[string]any `json:"components"`
+		}
+		require.NoError(t, json.Unmarshal(class.Spec.UISchema.Raw, &sections))
+		for name, section := range sections {
+			assert.NotEmpty(t, section.Components, "uiSchema section %q has no components", name)
+		}
+	}
 }

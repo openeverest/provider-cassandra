@@ -72,7 +72,7 @@ Stateful workloads additionally report:
 |---|---|---|
 | Persistent storage | ✅ | `spec.components.engine.storage` |
 | Storage expansion | ✅ | when the StorageClass allows volume expansion |
-| Backups (on demand) | ✅ | operator-native (`executionMode: ProviderManaged`) via Medusa |
+| Backups (on demand) | ✅ | operator-native (`executionMode: ProviderManaged`) via Medusa; a backup stays `Pending` until the cluster has finished applying changes and Medusa is ready on every node, such as during the rollout that enabling backups starts |
 | Restore | ✅ | in place, via Medusa restore jobs |
 | Scheduled backups | ✅ | recurring backups via Medusa's native scheduler; retention (`retention`, `count` type only) is enforced cluster-wide, not per-schedule |
 | PITR | 🚧 | not yet supported |
@@ -287,7 +287,13 @@ The technology-specific knobs worth knowing about:
 
 | Parameter | Applies to | Purpose |
 |---|---|---|
-| `heapInitialSize`, `heapMaxSize` | `engine` | JVM heap (`-Xms`, `-Xmx`) as quantities; unset, k8ssandra-operator sizes the heap from the container memory |
+| `heapInitialSize`, `heapMaxSize` | `engine` | JVM heap (`-Xms`, `-Xmx`) as quantities; with both unset, the heap is half the container memory limit (or request), at most 31744Mi |
+
+Cassandra would size the JVM from the node's memory, not the container's, and a container on a
+large node would then be OOM-killed. The provider sizes it from the container's memory instead,
+as Cassandra does from the machine's: half for the heap unless set, a quarter for direct memory
+(`-XX:MaxDirectMemorySize`). A cluster created before the provider sized the JVM keeps its JVM
+settings, since changing them restarts every node; set both heap sizes to size its heap.
 
 ## Development
 

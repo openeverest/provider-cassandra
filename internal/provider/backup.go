@@ -17,11 +17,13 @@ package provider
 import (
 	"fmt"
 
+	cassdcapi "github.com/k8ssandra/cass-operator/apis/cassandra/v1beta1"
 	k8ssandraapi "github.com/k8ssandra/k8ssandra-operator/apis/k8ssandra/v1alpha1"
 	medusaapi "github.com/k8ssandra/k8ssandra-operator/apis/medusa/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	backupv1alpha1 "github.com/openeverest/openeverest/v2/api/backup/v1alpha1"
@@ -30,6 +32,7 @@ import (
 	"github.com/openeverest/openeverest/v2/provider-runtime/controller"
 
 	"github.com/openeverest/provider-cassandra/definition/backupclasses"
+	"github.com/openeverest/provider-cassandra/internal/common"
 )
 
 // Compile-time interface checks.
@@ -184,6 +187,17 @@ func (p *Provider) SyncBackup(c *controller.Context, backup *backupv1alpha1.Back
 	job := &medusaapi.MedusaBackupJob{
 		ObjectMeta: metav1.ObjectMeta{Name: backup.Name, Namespace: backup.Namespace},
 	}
+	if err := c.Get(job, job.Name); apierrors.IsNotFound(err) {
+		waiting, err := backupBlocker(c)
+		if err != nil {
+			return controller.BackupExecutionStatus{}, err
+		}
+		if waiting != "" {
+			return controller.BackupExecutionStatus{State: backupv1alpha1.BackupStatePending, Message: waiting}, nil
+		}
+	} else if err != nil {
+		return controller.BackupExecutionStatus{}, fmt.Errorf("get MedusaBackupJob %s: %w", job.Name, err)
+	}
 	if _, err := controllerutil.CreateOrUpdate(c.Context(), c.Client(), job, func() error {
 		job.Spec.CassandraDatacenter = dcName
 		return controllerutil.SetControllerReference(backup, job, c.Client().Scheme())
@@ -192,6 +206,87 @@ func (p *Provider) SyncBackup(c *controller.Context, backup *backupv1alpha1.Back
 	}
 
 	return mapBackupJobStatus(job), nil
+}
+
+const (
+	// medusaContainer is the name k8ssandra-operator gives the Medusa sidecar.
+	medusaContainer = "medusa"
+
+	messageBackupWaitsForCluster = "Waiting for the Cassandra cluster to finish applying changes before starting the backup"
+	messageBackupWaitsForMedusa  = "Waiting for Medusa to become ready on every Cassandra node before starting the backup"
+)
+
+// backupBlocker returns why the cluster cannot take a backup yet, or "" when
+// it can. k8ssandra-operator starts a MedusaBackupJob as soon as every pod
+// spec carries the Medusa container, and never retries one that failed.
+// Enabling backups rolls the pods to add that container, and cass-operator
+// creates Medusa's CQL role only once the rollout ends, so a job started
+// during it fails on every node: the sidecar is not listening yet, or cannot
+// log in to Cassandra.
+func backupBlocker(c *controller.Context) (string, error) {
+	kc := &k8ssandraapi.K8ssandraCluster{}
+	if err := c.Get(kc, c.Name()); err != nil {
+		if apierrors.IsNotFound(err) {
+			return messageBackupWaitsForCluster, nil
+		}
+		return "", fmt.Errorf("get K8ssandraCluster %s: %w", c.Name(), err)
+	}
+	if kc.Spec.Medusa == nil {
+		return messageBackupWaitsForMedusa, nil
+	}
+	if !cassandraInitialized(kc) || kc.Status.ObservedGeneration < kc.Generation {
+		return messageBackupWaitsForCluster, nil
+	}
+	// cass-operator reports the datacenter Ready, and clears Updating, only
+	// after it has created the users, Medusa's included.
+	for _, dc := range kc.Status.Datacenters {
+		if dc.Cassandra == nil ||
+			dc.Cassandra.CassandraOperatorProgress != cassdcapi.ProgressReady ||
+			dc.Cassandra.GetConditionStatus(cassdcapi.DatacenterUpdating) == corev1.ConditionTrue {
+			return messageBackupWaitsForCluster, nil
+		}
+	}
+
+	pods := &corev1.PodList{}
+	if err := c.Client().List(c.Context(), pods,
+		client.InNamespace(c.Namespace()),
+		client.MatchingLabels{
+			controller.InstanceLabel:  c.Name(),
+			controller.ComponentLabel: common.ComponentEngine,
+		},
+	); err != nil {
+		return "", fmt.Errorf("list engine pods of Instance %s: %w", c.Name(), err)
+	}
+	size := 0
+	if kc.Spec.Cassandra != nil {
+		for _, dc := range kc.Spec.Cassandra.Datacenters {
+			size += int(dc.Size)
+		}
+	}
+	ready := 0
+	for i := range pods.Items {
+		if medusaReady(&pods.Items[i]) {
+			ready++
+		}
+	}
+	if ready < size || ready < len(pods.Items) {
+		return messageBackupWaitsForMedusa, nil
+	}
+	return "", nil
+}
+
+// medusaReady reports whether the pod is running, not being deleted, and has
+// a ready Medusa container.
+func medusaReady(pod *corev1.Pod) bool {
+	if !pod.DeletionTimestamp.IsZero() {
+		return false
+	}
+	for _, status := range pod.Status.ContainerStatuses {
+		if status.Name == medusaContainer {
+			return status.Ready
+		}
+	}
+	return false
 }
 
 // syncScheduledRun reports the status of a mirrored scheduled backup from its
@@ -243,6 +338,8 @@ func mapBackupJobStatus(job *medusaapi.MedusaBackupJob) controller.BackupExecuti
 		State: backupv1alpha1.BackupStatePending,
 	}
 
+	// The runtime keeps the last non-empty message, so every state sets one
+	// to replace the message SyncBackup reported while it waited.
 	switch {
 	case len(job.Status.Failed) > 0:
 		exec.State = backupv1alpha1.BackupStateFailed
@@ -250,9 +347,13 @@ func mapBackupJobStatus(job *medusaapi.MedusaBackupJob) controller.BackupExecuti
 	case !job.Status.FinishTime.IsZero():
 		finished := job.Status.FinishTime
 		exec.State = backupv1alpha1.BackupStateSucceeded
+		exec.Message = "Backup completed"
 		exec.CompletedAt = &finished
 	case !job.Status.StartTime.IsZero():
 		exec.State = backupv1alpha1.BackupStateRunning
+		exec.Message = "Medusa is backing up the Cassandra nodes"
+	default:
+		exec.Message = "Waiting for Medusa to start the backup"
 	}
 	return exec
 }

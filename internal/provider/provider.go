@@ -3,6 +3,7 @@ package provider
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 	"hash/fnv"
 
 	cassdcapi "github.com/k8ssandra/cass-operator/apis/cassandra/v1beta1"
@@ -194,6 +195,7 @@ func (p *Provider) buildCassandra(c *controller.Context) (*k8ssandraapi.Cassandr
 	if len(jvmErrs) > 0 {
 		return nil, jvmErrs.ToAggregate()
 	}
+	sizeJvmMemory(&jvmOptions, resources, existing)
 
 	podLabels := c.PodLabels(common.ComponentEngine)
 	cassandra := &k8ssandraapi.CassandraClusterTemplate{
@@ -302,10 +304,8 @@ func resolveEngineImage(c *controller.Context, engine corev1alpha1.ComponentSpec
 
 // resolveJvmOptions parses the engine component's heapInitialSize and
 // heapMaxSize parameters (see components.CassandraParameters) into
-// k8ssandra-operator's JvmOptions. Both are optional: left unset, the zero
-// value is returned and buildCassandraConfig produces no CassandraConfig,
-// leaving k8ssandra-operator's own heap auto-sizing (based on the engine
-// container's memory request/limit) in charge, matching prior behavior.
+// k8ssandra-operator's JvmOptions. Both are optional: left unset,
+// sizeJvmMemory sizes the heap from the engine container's memory.
 func resolveJvmOptions(engine corev1alpha1.ComponentSpec) (k8ssandraapi.JvmOptions, field.ErrorList) {
 	path := field.NewPath("spec", "components").Key(common.ComponentEngine).Child("parameters")
 	var params components.CassandraParameters
@@ -350,13 +350,74 @@ func resolveJvmOptions(engine corev1alpha1.ComponentSpec) (k8ssandraapi.JvmOptio
 }
 
 // buildCassandraConfig wraps jvmOptions in a CassandraConfig, or returns nil
-// when neither heap size was set, so DatacenterOptions.CassandraConfig stays
-// absent exactly as it did before heap-size parameters existed.
+// when it sets nothing, so DatacenterOptions.CassandraConfig stays absent
+// exactly as it did before heap-size parameters existed.
 func buildCassandraConfig(jvmOptions k8ssandraapi.JvmOptions) *k8ssandraapi.CassandraConfig {
-	if jvmOptions.InitialHeapSize == nil && jvmOptions.MaxHeapSize == nil {
+	if jvmOptions.InitialHeapSize == nil && jvmOptions.MaxHeapSize == nil &&
+		len(jvmOptions.AdditionalJvmServerOptions) == 0 {
 		return nil
 	}
 	return &k8ssandraapi.CassandraConfig{JvmOptions: jvmOptions}
+}
+
+const (
+	// maxDirectMemoryOption caps the JVM's off-heap NIO buffers.
+	maxDirectMemoryOption = "-XX:MaxDirectMemorySize="
+
+	// sizedHeapCapMi and sizedDirectCapMi are the caps cassandra-env.sh
+	// applies with G1, which keep the heap within compressed object pointers.
+	sizedHeapCapMi   = 31744
+	sizedDirectCapMi = sizedHeapCapMi / 2
+)
+
+// sizeJvmMemory sizes the JVM from the Cassandra container's memory, as
+// cassandra-env.sh would if it could see it: the heap is half of it, the
+// direct memory a quarter. cassandra-env.sh reads the memory with free, which
+// in a container reports the node's, so a 4Gi container on a 16GB node got an
+// 8GB heap plus 4GB of direct memory and was OOM-killed. An explicit heap
+// size is kept, but the direct memory is capped either way.
+//
+// A cluster that was created before the provider sized the JVM has no
+// direct memory option, and keeps the JVM settings it runs with: sizing it
+// would change the JVM of a running cluster and restart its pods.
+func sizeJvmMemory(jvm *k8ssandraapi.JvmOptions, resources *corev1.ResourceRequirements, existing *k8ssandraapi.CassandraClusterTemplate) {
+	if existing != nil && !sizesJvmMemory(existing) {
+		return
+	}
+	if resources == nil {
+		return
+	}
+	memory := resources.Limits.Memory()
+	if memory.IsZero() {
+		memory = resources.Requests.Memory()
+	}
+	memoryMi := memory.Value() >> 20
+	if memoryMi == 0 {
+		return
+	}
+
+	heapMi, directMi := memoryMi/2, memoryMi/4
+	if heapMi > sizedHeapCapMi {
+		heapMi, directMi = sizedHeapCapMi, sizedDirectCapMi
+	}
+	if jvm.InitialHeapSize == nil && jvm.MaxHeapSize == nil {
+		jvm.InitialHeapSize = resource.NewQuantity(heapMi<<20, resource.BinarySI)
+		jvm.MaxHeapSize = resource.NewQuantity(heapMi<<20, resource.BinarySI)
+	}
+	jvm.AdditionalJvmServerOptions = append(jvm.AdditionalJvmServerOptions, fmt.Sprintf("%s%dM", maxDirectMemoryOption, directMi))
+}
+
+// sizesJvmMemory reports whether the provider sized the JVM of the cluster.
+func sizesJvmMemory(cassandra *k8ssandraapi.CassandraClusterTemplate) bool {
+	if cassandra.CassandraConfig == nil {
+		return false
+	}
+	for _, option := range cassandra.CassandraConfig.JvmOptions.AdditionalJvmServerOptions {
+		if strings.HasPrefix(option, maxDirectMemoryOption) {
+			return true
+		}
+	}
+	return false
 }
 
 // buildStorageConfig maps the engine storage requirements onto the cass-operator

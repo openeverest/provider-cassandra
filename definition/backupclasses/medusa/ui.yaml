@@ -5,16 +5,8 @@
 #   backup  — on-demand backup modal (fields backed by parametersSchema.openAPIV3Schema).
 #   pitr    — per-storage PITR sub-form (fields backed by providerManaged.pitrParametersSchema).
 #   restore — restore modal (fields backed by restoreParametersSchema.openAPIV3Schema).
-
-backup:
-    components: {}
-    componentsOrder: []
-    label: Backup Configuration
-pitr:
-    components: {}
-    componentsOrder: []
-    label: PITR Configuration
-restore:
-    components: {}
-    componentsOrder: []
-    label: Restore Configuration
+#
+# Medusa takes no backup, PITR or restore parameters, so no section ships: the
+# UI reports a section without components as an invalid schema, while an absent
+# section renders nothing. Add a section only together with its first field.
+{}

@@ -13,14 +13,15 @@ package components
 // beyond what the base Instance spec provides.
 type CassandraParameters struct {
 	// HeapInitialSize sets the JVM's initial heap size (-Xms) as a
-	// Kubernetes quantity string, e.g. "1Gi". Left unset, k8ssandra-operator
-	// auto-sizes the heap from the engine container's memory request/limit.
+	// Kubernetes quantity string, e.g. "1Gi". With both heap sizes unset, the
+	// heap is half the engine container's memory limit (or request), at most
+	// 31744Mi.
 	// +optional
 	HeapInitialSize string `json:"heapInitialSize,omitempty"`
 
 	// HeapMaxSize sets the JVM's max heap size (-Xmx) as a Kubernetes
-	// quantity string, e.g. "1Gi". Left unset, k8ssandra-operator auto-sizes
-	// the heap from the engine container's memory request/limit.
+	// quantity string, e.g. "1Gi". With both heap sizes unset, the heap is
+	// half the engine container's memory limit (or request), at most 31744Mi.
 	// +optional
 	HeapMaxSize string `json:"heapMaxSize,omitempty"`
 }

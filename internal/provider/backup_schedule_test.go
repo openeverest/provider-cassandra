@@ -19,12 +19,16 @@ import (
 	"strings"
 	"testing"
 
+	cassdcapi "github.com/k8ssandra/cass-operator/apis/cassandra/v1beta1"
+	k8ssandraapi "github.com/k8ssandra/k8ssandra-operator/apis/k8ssandra/v1alpha1"
 	medusaapi "github.com/k8ssandra/k8ssandra-operator/apis/medusa/v1alpha1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/utils/ptr"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	backupv1alpha1 "github.com/openeverest/openeverest/v2/api/backup/v1alpha1"
 	commonv1alpha1 "github.com/openeverest/openeverest/v2/api/common/v1alpha1"
@@ -399,4 +403,111 @@ func TestSyncScheduledRun(t *testing.T) {
 		assert.Equal(t, "Backup", controllerRef.Kind)
 		assert.Equal(t, backup.Name, controllerRef.Name)
 	}
+}
+
+// An on-demand backup waits for the cluster to finish the rollout that adds
+// Medusa: k8ssandra-operator starts a MedusaBackupJob as soon as the pod
+// specs carry the sidecar and never retries a failed one, while the sidecar
+// is not listening yet and cass-operator has not created its CQL role.
+func TestSyncBackupWaitsForCluster(t *testing.T) {
+	t.Parallel()
+
+	instance := backupInstance(nil)
+	backup := &backupv1alpha1.Backup{
+		ObjectMeta: metav1.ObjectMeta{Name: "on-demand", Namespace: instance.Namespace, UID: "backup-uid"},
+	}
+	cluster := func(mutate func(*k8ssandraapi.K8ssandraCluster)) *k8ssandraapi.K8ssandraCluster {
+		kc := initializedCluster(cassdcapi.ProgressReady)
+		kc.Spec.Medusa = &medusaapi.MedusaClusterTemplate{}
+		kc.Spec.Cassandra = &k8ssandraapi.CassandraClusterTemplate{
+			Datacenters: []k8ssandraapi.CassandraDatacenterTemplate{{Meta: k8ssandraapi.EmbeddedObjectMeta{Name: "dc1"}, Size: 2}},
+		}
+		if mutate != nil {
+			mutate(kc)
+		}
+		return kc
+	}
+	pod := func(name string, medusa *bool) *corev1.Pod {
+		p := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{
+			Name: name, Namespace: instance.Namespace,
+			Labels: map[string]string{controller.InstanceLabel: instance.Name, controller.ComponentLabel: common.ComponentEngine},
+		}}
+		p.Status.ContainerStatuses = []corev1.ContainerStatus{{Name: "cassandra", Ready: true}}
+		if medusa != nil {
+			p.Status.ContainerStatuses = append(p.Status.ContainerStatuses, corev1.ContainerStatus{Name: medusaContainer, Ready: *medusa})
+		}
+		return p
+	}
+	ready, notReady := ptr.To(true), ptr.To(false)
+
+	tests := map[string]struct {
+		objs []client.Object
+		want string
+	}{
+		"no cluster yet": {nil, messageBackupWaitsForCluster},
+		"Medusa not configured yet": {
+			[]client.Object{cluster(func(kc *k8ssandraapi.K8ssandraCluster) { kc.Spec.Medusa = nil }), pod("n-0", ready), pod("n-1", ready)},
+			messageBackupWaitsForMedusa,
+		},
+		"the operator has not acted on the latest spec": {
+			[]client.Object{cluster(func(kc *k8ssandraapi.K8ssandraCluster) { kc.Generation = 3 }), pod("n-0", ready), pod("n-1", ready)},
+			messageBackupWaitsForCluster,
+		},
+		"pods roll out": {
+			[]client.Object{cluster(func(kc *k8ssandraapi.K8ssandraCluster) {
+				kc.Status.Datacenters["dc1"].Cassandra.CassandraOperatorProgress = cassdcapi.ProgressUpdating
+			}), pod("n-0", ready), pod("n-1", ready)},
+			messageBackupWaitsForCluster,
+		},
+		"every sidecar is ready but the users are not created yet": {
+			[]client.Object{cluster(func(kc *k8ssandraapi.K8ssandraCluster) {
+				kc.Status.Datacenters["dc1"].Cassandra.Conditions = []cassdcapi.DatacenterCondition{
+					dcCondition(cassdcapi.DatacenterUpdating, corev1.ConditionTrue, ""),
+				}
+			}), pod("n-0", ready), pod("n-1", ready)},
+			messageBackupWaitsForCluster,
+		},
+		"a pod has no sidecar yet": {[]client.Object{cluster(nil), pod("n-0", ready), pod("n-1", nil)}, messageBackupWaitsForMedusa},
+		"a sidecar is not ready":   {[]client.Object{cluster(nil), pod("n-0", ready), pod("n-1", notReady)}, messageBackupWaitsForMedusa},
+		"a pod is missing":         {[]client.Object{cluster(nil), pod("n-0", ready)}, messageBackupWaitsForMedusa},
+		"every sidecar is ready":   {[]client.Object{cluster(nil), pod("n-0", ready), pod("n-1", ready)}, ""},
+	}
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			c := fakeClientContext(instance, tc.objs...)
+
+			exec, err := New().SyncBackup(c, backup)
+			require.NoError(t, err)
+
+			assert.Equal(t, backupv1alpha1.BackupStatePending, exec.State)
+			err = c.Get(&medusaapi.MedusaBackupJob{}, backup.Name)
+			if tc.want == "" {
+				assert.NoError(t, err, "the job is created once the cluster is ready")
+				assert.NotNil(t, exec.OperatorBackupRef)
+				assert.Equal(t, "Waiting for Medusa to start the backup", exec.Message, "replaces the message of the wait")
+			} else {
+				assert.Equal(t, tc.want, exec.Message)
+				assert.True(t, apierrors.IsNotFound(err), "no job is created while the cluster is not ready")
+			}
+		})
+	}
+
+	t.Run("a started job is still observed while the cluster rolls", func(t *testing.T) {
+		t.Parallel()
+		job := &medusaapi.MedusaBackupJob{
+			ObjectMeta: metav1.ObjectMeta{Name: backup.Name, Namespace: instance.Namespace},
+			Spec:       medusaapi.MedusaBackupJobSpec{CassandraDatacenter: "dc1"},
+			Status:     medusaapi.MedusaBackupJobStatus{StartTime: metav1.Now()},
+		}
+		rolling := cluster(func(kc *k8ssandraapi.K8ssandraCluster) {
+			kc.Status.Datacenters["dc1"].Cassandra.CassandraOperatorProgress = cassdcapi.ProgressUpdating
+		})
+		c := fakeClientContext(instance, rolling, job)
+
+		exec, err := New().SyncBackup(c, backup)
+		require.NoError(t, err)
+		assert.Equal(t, backupv1alpha1.BackupStateRunning, exec.State)
+		assert.Equal(t, "Medusa is backing up the Cassandra nodes", exec.Message)
+	})
 }

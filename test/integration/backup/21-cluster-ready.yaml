@@ -1,0 +1,13 @@
+# Stands in for a Cassandra node: the backup waits for a ready Medusa
+# container on every engine pod.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: cass-backup-node-0
+  labels:
+    core.openeverest.io/instance: cass-backup
+    core.openeverest.io/component: engine
+spec:
+  containers:
+    - name: medusa
+      image: registry.k8s.io/pause:3.10

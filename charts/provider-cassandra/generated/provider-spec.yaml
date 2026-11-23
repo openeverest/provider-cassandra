@@ -34,14 +34,15 @@ spec:
             heapInitialSize:
               description: |-
                 HeapInitialSize sets the JVM's initial heap size (-Xms) as a
-                Kubernetes quantity string, e.g. "1Gi". Left unset, k8ssandra-operator
-                auto-sizes the heap from the engine container's memory request/limit.
+                Kubernetes quantity string, e.g. "1Gi". With both heap sizes unset, the
+                heap is half the engine container's memory limit (or request), at most
+                31744Mi.
               type: string
             heapMaxSize:
               description: |-
                 HeapMaxSize sets the JVM's max heap size (-Xmx) as a Kubernetes
-                quantity string, e.g. "1Gi". Left unset, k8ssandra-operator auto-sizes
-                the heap from the engine container's memory request/limit.
+                quantity string, e.g. "1Gi". With both heap sizes unset, the heap is
+                half the engine container's memory limit (or request), at most 31744Mi.
               type: string
           type: object
       type: cassandra
