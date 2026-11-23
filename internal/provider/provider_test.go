@@ -500,8 +500,85 @@ func TestSyncReapplyDropsRemovedSettings(t *testing.T) {
 
 	kc = &k8ssandraapi.K8ssandraCluster{}
 	require.NoError(t, c2.Get(kc, instance.Name))
-	assert.Nil(t, kc.Spec.Cassandra.CassandraConfig)
+	if assert.NotNil(t, kc.Spec.Cassandra.CassandraConfig) {
+		jvm := kc.Spec.Cassandra.CassandraConfig.JvmOptions
+		derived := resource.MustParse("2Gi")
+		assert.Zero(t, derived.Cmp(*jvm.InitialHeapSize), "the dropped heap sizes give way to the derived ones")
+		assert.Zero(t, derived.Cmp(*jvm.MaxHeapSize), "the dropped heap sizes give way to the derived ones")
+	}
 	assert.Nil(t, kc.Spec.Cassandra.Telemetry, "monitoring is not rendered into the cluster")
 	assert.Equal(t, dcName, kc.Spec.Cassandra.Datacenters[0].Meta.Name, "datacenter name must survive a re-apply")
 	assert.NotNil(t, kc.Spec.Cassandra.Resources, "resources must be grandfathered across a re-apply")
+}
+
+// cassandra-env.sh sizes the JVM from the node's memory, not the
+// container's, so the provider sizes it from the container's.
+func TestSizeJvmMemory(t *testing.T) {
+	t.Parallel()
+
+	memory := func(limit, request string) *corev1.ResourceRequirements {
+		r := &corev1.ResourceRequirements{Limits: corev1.ResourceList{}, Requests: corev1.ResourceList{}}
+		if limit != "" {
+			r.Limits[corev1.ResourceMemory] = resource.MustParse(limit)
+		}
+		if request != "" {
+			r.Requests[corev1.ResourceMemory] = resource.MustParse(request)
+		}
+		return r
+	}
+	sized := &k8ssandraapi.CassandraClusterTemplate{CassandraConfig: &k8ssandraapi.CassandraConfig{
+		JvmOptions: k8ssandraapi.JvmOptions{AdditionalJvmServerOptions: []string{"-XX:MaxDirectMemorySize=1024M"}},
+	}}
+	legacy := &k8ssandraapi.CassandraClusterTemplate{}
+	explicit := resource.MustParse("3Gi")
+
+	tests := map[string]struct {
+		heap      *resource.Quantity
+		resources *corev1.ResourceRequirements
+		existing  *k8ssandraapi.CassandraClusterTemplate
+		wantHeap  string
+		wantOpts  []string
+	}{
+		"half the limit for the heap, a quarter for direct memory": {
+			resources: memory("4Gi", "4Gi"), wantHeap: "2Gi", wantOpts: []string{"-XX:MaxDirectMemorySize=1024M"},
+		},
+		"the request without a limit": {
+			resources: memory("", "2Gi"), wantHeap: "1Gi", wantOpts: []string{"-XX:MaxDirectMemorySize=512M"},
+		},
+		"the heap is capped like cassandra-env.sh does": {
+			resources: memory("128Gi", ""), wantHeap: "31744Mi", wantOpts: []string{"-XX:MaxDirectMemorySize=15872M"},
+		},
+		"an explicit heap is kept, direct memory still capped": {
+			heap: &explicit, resources: memory("8Gi", ""), wantHeap: "3Gi", wantOpts: []string{"-XX:MaxDirectMemorySize=2048M"},
+		},
+		"a sized cluster follows a new limit": {
+			resources: memory("8Gi", ""), existing: sized, wantHeap: "4Gi", wantOpts: []string{"-XX:MaxDirectMemorySize=2048M"},
+		},
+		"no memory to size from":                  {resources: memory("", "")},
+		"no resources":                            {},
+		"a cluster created before sizing is kept": {resources: memory("4Gi", ""), existing: legacy},
+	}
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			jvm := k8ssandraapi.JvmOptions{}
+			if tc.heap != nil {
+				jvm.InitialHeapSize, jvm.MaxHeapSize = tc.heap, tc.heap
+			}
+
+			sizeJvmMemory(&jvm, tc.resources, tc.existing)
+
+			assert.Equal(t, tc.wantOpts, jvm.AdditionalJvmServerOptions)
+			if tc.wantHeap == "" {
+				assert.Nil(t, jvm.MaxHeapSize)
+				assert.Nil(t, buildCassandraConfig(jvm), "the cluster keeps no JVM config")
+				return
+			}
+			want := resource.MustParse(tc.wantHeap)
+			if assert.NotNil(t, jvm.InitialHeapSize) && assert.NotNil(t, jvm.MaxHeapSize) {
+				assert.Zero(t, want.Cmp(*jvm.InitialHeapSize), "initial heap %s", jvm.InitialHeapSize)
+				assert.Zero(t, want.Cmp(*jvm.MaxHeapSize), "max heap %s", jvm.MaxHeapSize)
+			}
+		})
+	}
 }
