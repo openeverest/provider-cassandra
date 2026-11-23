@@ -38,18 +38,37 @@ spec:
         - assert:
             file: 11-assert.yaml
 
+    # A backup waits until the cluster is ready and Medusa runs on every node:
+    # k8ssandra-operator never retries a MedusaBackupJob that failed.
     - name: on-demand-backup
       try:
         - apply:
             file: 20-create-backup.yaml
         - assert:
             file: 20-assert.yaml
+        - error:
+            file: 20-errors.yaml
+        - apply:
+            file: 21-cluster-ready.yaml
+        - assert:
+            timeout: 2m
+            file: 21-cluster-ready-assert.yaml
+        - script:
+            content: |
+              set -e
+              generation=$(kubectl -n $NAMESPACE get k8ssandracluster/cass-backup -o jsonpath='{.metadata.generation}')
+              kubectl -n $NAMESPACE patch k8ssandracluster/cass-backup --subresource status --type merge -p "{\"status\":{
+                \"observedGeneration\":${generation},
+                \"conditions\":[{\"type\":\"CassandraInitialized\",\"status\":\"True\"}],
+                \"datacenters\":{\"dc1-922e1d38\":{\"cassandra\":{\"cassandraOperatorProgress\":\"Ready\"}}}}}"
+        - assert:
+            file: 22-assert.yaml
         - script:
             content: |
               kubectl -n $NAMESPACE patch medusabackupjob/cass-backup-manual --subresource status --type merge \
                 -p '{"status":{"startTime":"2026-01-01T00:00:00Z","finishTime":"2026-01-01T00:05:00Z","finished":["pod-0"]}}'
         - assert:
-            file: 21-assert.yaml
+            file: 23-assert.yaml
 
     # k8ssandra-operator's scheduler names each run "<schedule>-<unix-timestamp>"
     # and sets no owner; the provider must mirror it as a Backup and adopt it.

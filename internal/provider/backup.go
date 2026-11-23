@@ -231,9 +231,11 @@ func backupBlocker(c *controller.Context) (string, error) {
 		}
 		return "", fmt.Errorf("get K8ssandraCluster %s: %w", c.Name(), err)
 	}
-	if kc.Spec.Medusa == nil || !cassandraInitialized(kc) ||
-		kc.Status.ObservedGeneration < kc.Generation {
+	if kc.Spec.Medusa == nil {
 		return messageBackupWaitsForMedusa, nil
+	}
+	if !cassandraInitialized(kc) || kc.Status.ObservedGeneration < kc.Generation {
+		return messageBackupWaitsForCluster, nil
 	}
 	// cass-operator reports the datacenter Ready, and clears Updating, only
 	// after it has created the users, Medusa's included.

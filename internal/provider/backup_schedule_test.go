@@ -451,7 +451,7 @@ func TestSyncBackupWaitsForCluster(t *testing.T) {
 		},
 		"the operator has not acted on the latest spec": {
 			[]client.Object{cluster(func(kc *k8ssandraapi.K8ssandraCluster) { kc.Generation = 3 }), pod("n-0", ready), pod("n-1", ready)},
-			messageBackupWaitsForMedusa,
+			messageBackupWaitsForCluster,
 		},
 		"pods roll out": {
 			[]client.Object{cluster(func(kc *k8ssandraapi.K8ssandraCluster) {
