@@ -60,3 +60,10 @@ package provider
 // +kubebuilder:rbac:groups="",resources=secrets;configmaps;services,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=persistentvolumeclaims,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch
+
+// =============================================================================
+// CERT-MANAGER RESOURCES
+// =============================================================================
+// TLS: the CA of each instance (a self-signed and a CA Issuer) and the
+// certificates of its nodes.
+// +kubebuilder:rbac:groups=cert-manager.io,resources=certificates;issuers,verbs=get;list;watch;create;update;patch;delete

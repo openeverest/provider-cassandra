@@ -3,9 +3,11 @@ module github.com/openeverest/provider-cassandra
 go 1.27.1
 
 require (
+	github.com/cert-manager/cert-manager v1.20.3
 	github.com/k8ssandra/cass-operator v1.33.1
 	github.com/k8ssandra/k8ssandra-operator v1.34.0
 	github.com/openeverest/openeverest/v2 v2.0.0-alpha.1
+	github.com/pavlo-v-chernykh/keystore-go/v4 v4.5.0
 	github.com/stretchr/testify v1.12.1
 	k8s.io/api v0.37.2
 	k8s.io/apiextensions-apiserver v0.37.2
@@ -144,6 +146,7 @@ require (
 	k8s.io/klog/v2 v2.140.0 // indirect
 	k8s.io/kube-openapi v0.0.0-20260721132016-d427ff9ee9ad // indirect
 	sigs.k8s.io/controller-tools v0.23.0 // indirect
+	sigs.k8s.io/gateway-api v1.5.1 // indirect
 	sigs.k8s.io/json v0.0.0-20250730193827-2d320260d730 // indirect
 	sigs.k8s.io/randfill v1.0.0 // indirect
 	sigs.k8s.io/structured-merge-diff/v6 v6.4.2 // indirect

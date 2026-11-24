@@ -3,9 +3,11 @@ package provider
 import (
 	"encoding/json"
 	"fmt"
-	"strings"
 	"hash/fnv"
+	"strings"
 
+	cmapi "github.com/cert-manager/cert-manager/pkg/apis/certmanager/v1"
+	cmmeta "github.com/cert-manager/cert-manager/pkg/apis/meta/v1"
 	cassdcapi "github.com/k8ssandra/cass-operator/apis/cassandra/v1beta1"
 	k8ssandraapi "github.com/k8ssandra/k8ssandra-operator/apis/k8ssandra/v1alpha1"
 	medusaapi "github.com/k8ssandra/k8ssandra-operator/apis/medusa/v1alpha1"
@@ -15,6 +17,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/validation/field"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
@@ -88,16 +91,22 @@ var _ controller.ProviderInterface = (*Provider)(nil)
 // Provider implements controller.ProviderInterface for the provider-cassandra provider.
 type Provider struct {
 	controller.BaseProvider
+
+	// tlsSources maps certificate Secrets to the Instances using them.
+	tlsSources *sourceIndex
 }
 
 // New creates a new Provider instance.
 func New() *Provider {
+	tlsSources := newSourceIndex()
 	p := &Provider{
+		tlsSources: tlsSources,
 		BaseProvider: controller.BaseProvider{
 			ProviderName: common.ProviderName,
 			SchemeFuncs: []func(*runtime.Scheme) error{
 				k8ssandraapi.AddToScheme,
 				medusaapi.AddToScheme,
+				cmapi.AddToScheme,
 			},
 			// GenerationChangedPredicate matters here: k8ssandra-operator writes to
 			// K8ssandraCluster.status very frequently while a cluster is coming up
@@ -119,6 +128,10 @@ func New() *Provider {
 				// enter and leave Restoring when one starts or ends.
 				controller.WatchExternal(&backupv1alpha1.Restore{},
 					handler.EnqueueRequestsFromMapFunc(enqueueRestoreInstance)),
+				// The certificate Secrets, so a renewed certificate reaches
+				// the stores the nodes read.
+				controller.WatchExternal(&corev1.Secret{},
+					handler.EnqueueRequestsFromMapFunc(tlsSources.enqueue)),
 			},
 		},
 	}
@@ -141,6 +154,8 @@ func (p *Provider) Sync(c *controller.Context) error {
 		ObjectMeta: c.ObjectMeta(c.Name()),
 	}
 	kc.Spec.Cassandra = cassandra
+	// Authentication is always on; there is no parameter to turn it off.
+	kc.Spec.Auth = ptr.To(true)
 
 	medusa, held, err := buildMedusa(c)
 	if err != nil {
@@ -154,15 +169,31 @@ func (p *Provider) Sync(c *controller.Context) error {
 	}
 	kc.Spec.Reaper = reaper
 
+	tlsRollout, err := applyTLS(c, kc, p.sources())
+	if err != nil {
+		return err
+	}
+
 	if err := c.Apply(kc); err != nil {
 		return err
 	}
 
 	// A held storage keeps its schedules as they are, like its Medusa config.
-	if held {
-		return nil
+	if !held {
+		if err := SyncScheduledBackups(c); err != nil {
+			return err
+		}
 	}
-	return SyncScheduledBackups(c)
+	return tlsRollout
+}
+
+// sources returns the certificate Secret index, also for a Provider not
+// built by New.
+func (p *Provider) sources() *sourceIndex {
+	if p.tlsSources == nil {
+		p.tlsSources = newSourceIndex()
+	}
+	return p.tlsSources
 }
 
 // buildCassandra translates the engine component spec into a single-datacenter
@@ -467,20 +498,30 @@ func buildConnectionDetails(c *controller.Context) (controller.ConnectionDetails
 	}
 	host := fmt.Sprintf("%s-%s-service", clusterName, dcName)
 
-	return controller.ConnectionDetails{
+	details := controller.ConnectionDetails{
 		Type:     common.ProviderShortName,
 		Provider: common.ProviderShortName,
 		Host:     host,
 		Port:     cqlPort,
 		Username: string(secret.Data["username"]),
 		Password: string(secret.Data["password"]),
-	}, nil
+	}
+	// Clients verify the nodes' certificate with its CA.
+	if ca := readClientCA(c); ca != "" {
+		details.AdditionalProperties = map[string]string{cmmeta.TLSCAKey: ca}
+	}
+	return details, nil
 }
 
-// Cleanup deletes the K8ssandraCluster backing this Instance.
+// Cleanup deletes the K8ssandraCluster backing this Instance, and the
+// certificates the provider requested for it.
 func (p *Provider) Cleanup(c *controller.Context) error {
+	p.sources().set(c.Namespace(), c.Name(), nil)
 	kc := &k8ssandraapi.K8ssandraCluster{
 		ObjectMeta: c.ObjectMeta(c.Name()),
 	}
-	return c.Delete(kc)
+	if err := c.Delete(kc); err != nil {
+		return err
+	}
+	return deleteTLSResources(c)
 }

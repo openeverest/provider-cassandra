@@ -1,0 +1,21 @@
+apiVersion: k8ssandra.io/v1alpha1
+kind: K8ssandraCluster
+metadata:
+  name: cass-tls
+---
+# cert-manager does not make the Secrets it writes owned by the Certificate,
+# so the provider deletes them with the instance.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: cass-tls-tls
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: cass-tls-internode-tls
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: cass-tls-ca

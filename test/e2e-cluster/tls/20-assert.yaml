@@ -1,0 +1,33 @@
+# Every node encrypts the traffic to the others and requires it from them.
+apiVersion: k8ssandra.io/v1alpha1
+kind: K8ssandraCluster
+metadata:
+  name: cass-tls
+spec:
+  auth: true
+  cassandra:
+    config:
+      cassandraYaml:
+        client_encryption_options:
+          enabled: true
+          optional: true
+        server_encryption_options:
+          internode_encryption: all
+          optional: false
+          require_client_auth: true
+---
+apiVersion: core.openeverest.io/v1alpha1
+kind: Instance
+metadata:
+  name: cass-tls
+status:
+  (conditions[?type == 'Ready'] | [0].status): 'True'
+  (components[?name == 'repair'] | [0].readyReplicas): 1
+---
+apiVersion: cassandra.datastax.com/v1beta1
+kind: CassandraDatacenter
+metadata:
+  name: dc1-a5b8459f
+(status.observedGeneration == metadata.generation): true
+status:
+  cassandraOperatorProgress: Ready

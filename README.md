@@ -65,6 +65,7 @@ provider itself is covered under [Installation](#installation).
 | Version upgrades | ✅ | of the deployed Cassandra version — change `spec.version`; see [Versions](#versions) |
 | Monitoring | ✅ | Metrics of the Cassandra pods published for monitoring extensions through `spec.monitoring.destinations`. See [Monitoring](#monitoring) |
 | Repairs | ✅ | optional `repair` component (Reaper); see [Repairs](#repairs) |
+| TLS | ✅ | `spec.parameters.tls`, for clients and between the nodes; see [TLS](#tls) |
 
 Stateful workloads additionally report:
 
@@ -249,6 +250,69 @@ spec:
   `reaper_db` keyspace in place.
 - The component is opt-in: an `Instance` without it is accepted with a warning. While Reaper
   is not ready the `Instance` is not `Ready`, and its `Ready` message says it waits for Reaper.
+
+## TLS
+
+Turn on encryption in transit with `spec.parameters.tls`, which has the same shape in every
+OpenEverest provider:
+
+```yaml
+spec:
+  parameters:
+    tls:
+      mode: requireTLS                     # disabled (default) | preferTLS | requireTLS
+      # Optional, pick at most one source for the client certificate:
+      # certificateSecretName: mydb-tls    # tls.crt, tls.key, ca.crt
+      # issuer: {name: company-ca, kind: ClusterIssuer}
+      # additionalNames: [mydb.example.com]
+      # internalCertificateSecretName: mydb-internode-tls
+```
+
+- `preferTLS` accepts clients with and without TLS on the CQL port (9042); `requireTLS`
+  rejects the ones without. With TLS on, the nodes also encrypt the traffic between them and
+  authenticate each other with certificates.
+- **Client certificate**, in order of precedence: the Secret `certificateSecretName`, a
+  certificate from the cert-manager `issuer`, or else a certificate signed by a CA the provider
+  creates for the instance with cert-manager. `additionalNames` adds DNS names, such as an
+  external name, to a certificate cert-manager issues.
+- **Node-to-node certificate**: the Secret `internalCertificateSecretName`, or else a
+  certificate signed by the instance's own CA, never by `issuer`. Any certificate the nodes'
+  CA signs can join the cluster, so a company-wide CA must not be that CA.
+- A Secret you bring holds the certificate and any intermediates (`tls.crt`), its key
+  (`tls.key`) and the CA (`ca.crt`). The node-to-node certificate must allow both server and
+  client authentication. An issuer must write `ca.crt`, as the CA and Vault issuers do.
+- The CA clients verify the nodes with is published as `ca.crt` in the connection Secret
+  (`<instance>-conn`). Cassandra drivers find the other nodes by their IP addresses, which the
+  certificate does not name, so verify the CA and turn off host name verification, as Reaper
+  does. For example, `cqlsh --ssl` with `SSL_CERTFILE=ca.crt` and `SSL_VALIDATE=true`.
+- Turning TLS on for a running instance restarts the pods one at a time, three times, to encrypt
+  the traffic between the nodes: they first accept TLS from each other, then send it, then
+  require it, so they can always reach each other. A fourth rolling restart then turns on TLS for
+  clients. The `Instance` reports each step. Changing `mode` later restarts the pods once.
+- With backups, the clients' step restarts **all pods at once**: k8ssandra-operator gives Medusa
+  the client certificate in the same change, and Medusa restarts itself in every pod when its
+  configuration changes, which makes the rolling restart replace them all together. That step
+  is held as a `Downtime` action on `status.pendingMaintenance` until you approve it with
+  `spec.maintenance.approved: enable-client-tls`. Instances created with TLS start with it and
+  need no approval.
+- Certificates are renewed without a restart: the provider rebuilds the Java keystores from the
+  new certificate, and Cassandra reloads them. Changing `additionalNames` works the same way.
+- TLS cannot be turned off again, and the certificate sources cannot change while it is on.
+- Medusa and Reaper connect to Cassandra over TLS once it is on for clients.
+- With TLS on, k8ssandra-operator also requires TLS and a client certificate on the local JMX
+  port, so `nodetool` in a Cassandra container needs `--ssl` and the node's keystore:
+
+  ```bash
+  PW=$(kubectl get secret <instance>-tls-stores -o jsonpath='{.data.password}' | base64 -d)
+  kubectl exec <pod> -c cassandra -- env PW="$PW" sh -c 'mkdir -p ~/.cassandra && printf "%s\n" \
+    -Djavax.net.ssl.keyStore=/mnt/client-keystore/keystore -Djavax.net.ssl.keyStorePassword=$PW \
+    -Djavax.net.ssl.trustStore=/mnt/client-truststore/truststore -Djavax.net.ssl.trustStorePassword=$PW \
+    -Djdk.rmi.ssl.client.enableEndpointIdentification=false > ~/.cassandra/nodetool-ssl.properties &&
+    nodetool --ssl status'
+  ```
+- k8ssandra-operator copies the keystore password (from the `<instance>-tls-stores` Secret) into
+  the `CassandraDatacenter` it manages; it protects only the keystores in that Secret.
+- Authentication is always on, with no parameter to turn it off.
 
 ## Topologies
 

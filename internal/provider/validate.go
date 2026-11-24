@@ -40,8 +40,10 @@ func (p *Provider) Validate(in controller.ValidationInput) controller.Validation
 	errs = append(errs, jvmErrs...)
 	errs = append(errs, validateScheduling(enginePath.Child("schedulingPolicy"), engine.SchedulingPolicy)...)
 	errs = append(errs, validateRepair(in.Instance)...)
+	errs = append(errs, validateTLS(in.Instance)...)
+	transitionErrs, warnings := validateTLSTransition(in.Instance, in.Old)
+	errs = append(errs, transitionErrs...)
 
-	var warnings []string
 	if _, ok := in.Instance.Spec.Components[common.ComponentRepair]; !ok {
 		warnings = append(warnings, warningNoRepair)
 	}
