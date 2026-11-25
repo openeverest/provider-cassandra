@@ -34,6 +34,7 @@ import (
 
 	backupv1alpha1 "github.com/openeverest/openeverest/v2/api/backup/v1alpha1"
 	corev1alpha1 "github.com/openeverest/openeverest/v2/api/core/v1alpha1"
+	"github.com/openeverest/openeverest/v2/contract"
 	"github.com/openeverest/openeverest/v2/provider-runtime/controller"
 
 	"github.com/openeverest/provider-cassandra/definition/components"
@@ -468,7 +469,7 @@ func TestSyncLabelsEnginePods(t *testing.T) {
 	kc := &k8ssandraapi.K8ssandraCluster{}
 	require.NoError(t, c.Get(kc, instance.Name))
 	assert.Equal(t, map[string]string{
-		controller.ProviderLabel:  common.ProviderName,
+		contract.ProviderLabel:    common.ProviderName,
 		controller.InstanceLabel:  instance.Name,
 		controller.ComponentLabel: common.ComponentEngine,
 	}, kc.Spec.Cassandra.Meta.Pods.Labels)

@@ -22,3 +22,5 @@ dependencies:
     version: "1.34.0"
     repository: https://helm.k8ssandra.io/stable
     condition: operator.enabled
+annotations:
+  openeverest.io/contract-version: "2.0.0-alpha.1.next"

@@ -14,6 +14,7 @@ import (
 
 	commonv1alpha1 "github.com/openeverest/openeverest/v2/api/common/v1alpha1"
 	corev1alpha1 "github.com/openeverest/openeverest/v2/api/core/v1alpha1"
+	"github.com/openeverest/openeverest/v2/contract"
 	"github.com/openeverest/openeverest/v2/provider-runtime/controller"
 
 	"github.com/openeverest/provider-cassandra/internal/common"
@@ -74,7 +75,7 @@ func TestBuildReaper(t *testing.T) {
 		// Over JMX the operator would reconfigure and restart Cassandra.
 		assert.True(t, reaper.HttpManagement.Enabled)
 		assert.Equal(t, map[string]string{
-			controller.ProviderLabel:  common.ProviderName,
+			contract.ProviderLabel:    common.ProviderName,
 			controller.InstanceLabel:  instance.Name,
 			controller.ComponentLabel: common.ComponentRepair,
 		}, reaper.ResourceMeta.Pods.Labels)

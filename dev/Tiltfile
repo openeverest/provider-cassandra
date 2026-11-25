@@ -39,6 +39,13 @@ install_openeverest = str2bool(os.getenv('INSTALL_OPENEVEREST', 'true'))
 # Released OpenEverest core version to install: the one this provider supports
 # (see the README's compatibility table). Empty means Helm's latest stable,
 # which skips pre-releases.
+#
+# While go.mod requires a commit of core main whose contract has changed since
+# the last release (the chart's stamp is then a development value, such as
+# 2.0.0-alpha.1.next), no released core serves this provider: the chart
+# refuses to install on it, and the provider would stay unready. Run the core
+# from that commit instead, with INSTALL_OPENEVEREST=false (`make openeverest-ref`
+# prints it).
 openeverest_version = os.getenv('OPENEVEREST_VERSION', '2.0.0-alpha.1')
 
 # Helm repository that hosts the OpenEverest core chart.
