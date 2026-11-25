@@ -52,6 +52,11 @@ lifecycle work is delegated to the operator.
 | `0.2.x` | `2.0.0-alpha.1` | `1.34.x` | `1.32` – `1.34` |
 | `0.1.x` | `2.0.0-dev.1` | `1.34.x` | `1.30` – `1.34` |
 
+Each chart also names the OpenEverest it is built for, in the `openeverest.io/contract-version`
+annotation of its `Chart.yaml`, which `make generate` writes. A Helm install on an OpenEverest
+that does not serve that version fails, and a build applied any other way waits, unready, until
+OpenEverest serves it; see [Installation](#installation).
+
 ## Capabilities
 
 What you can do to a running instance through the `Instance` API. Upgrading the
@@ -105,6 +110,24 @@ helm install provider-cassandra oci://ghcr.io/openeverest/charts/provider-cassan
   1 CPU, 4Gi and 25Gi each). Change or disable it, or add your own, under `presets` in the
   chart values; `provider.shortName` prefixes their names. Presets pin the provider's default
   [version](#versions) bundle and reference no namespaced objects.
+- With Helm or Flux, the install fails, before anything is applied, when the OpenEverest in the
+  cluster does not serve the OpenEverest the chart is built for, and the error names the
+  OpenEverest it needs. Argo CD, and any tool that applies pre-rendered manifests, renders the
+  chart without reading the cluster, so that check passes there. Whichever tool applies it, a
+  new build of the provider that the installed OpenEverest does not support stays alive but
+  unready until OpenEverest does, and a Warning Event on the `Provider` says why (see
+  [Troubleshooting](#troubleshooting)). Under the default `RollingUpdate` strategy, the
+  previous build, if any, keeps serving meanwhile.
+- To install anyway, set `compatibility.acknowledge.coreVersion` to the OpenEverest version the
+  cluster runs, which the error also names. The chart writes it on the `Provider`, its
+  `BackupClass` and the presets as `openeverest.io/compatibility-acknowledged`, and the
+  provider reads it on its `Provider` at startup, so it lets a held build start too. It holds
+  on that release and on later ones that keep its contract, such as its patch releases, and
+  expires with the first OpenEverest release that changes the contract, which is checked again.
+- The chart sets no annotation for any tool itself: `openeverest.annotations` adds annotations
+  to the `Provider`, its `BackupClass` and the presets, such as
+  `argocd.argoproj.io/sync-wave: "-1"` to have Argo CD apply them before the provider's
+  `Deployment` and the bundled operator.
 
 > [!IMPORTANT]
 > The operator's admission webhooks require [cert-manager](https://cert-manager.io) to be
@@ -367,15 +390,16 @@ local k3d setup, running against a cluster you already have, and every `dev/.env
 
 ```bash
 make dev-up             # local cluster + Tilt dev environment (see dev/README.md)
-make generate           # RBAC, provider spec, Helm chart sync
+make generate           # RBAC, provider spec, Helm chart sync, OpenEverest stamp
 make run                # run the provider locally against the cluster
 make test-unit
 make test-integration   # chainsaw suites under test/integration/
 make dev-down
 ```
 
-`make help` lists every target. `make verify` fails when generated files are stale — run
-`make generate` and commit the result.
+`make help` lists every target. `make verify` fails when generated files are stale or the chart
+is not stamped with the OpenEverest the provider is built against — run `make generate` and
+commit the result.
 
 The provider contract (`Validate` / `Sync` / `Status` / `Cleanup`), RBAC markers, watches,
 code generation, and the backup/restore interfaces are documented once for all providers in
@@ -389,7 +413,7 @@ code generation, and the backup/restore interfaces are documented once for all p
 | `internal/provider/` | `ProviderInterface` implementation, backup interfaces, RBAC markers |
 | `internal/common/` | Component name constants |
 | `definition/` | Provider identity, component types, versions, topologies, backup classes |
-| `charts/provider-cassandra/` | Helm chart (`generated/` is produced by `make generate`) |
+| `charts/provider-cassandra/` | Helm chart (`generated/`, the `Chart.yaml` stamp, `templates/_openeverest_contract.tpl` and `templates/openeverest-compat-check.yaml` are produced by `make generate`) |
 | `config/rbac/role.yaml` | Generated `ClusterRole` — do not edit |
 | `test/integration/` | Chainsaw suites: `core` |
 | `examples/` | Example `Instance` resources |
@@ -416,6 +440,7 @@ kubectl logs -n everest-system deploy/provider-cassandra -f
 | `Instance` stuck in `Creating` | `kubectl describe instance <name>` conditions, then the provider logs |
 | No `Provider` resource in the cluster | Is the chart installed? Check the provider deployment logs |
 | `Instance` ignored entirely | `spec.providerRef.name` must be `provider-cassandra` |
+| New provider pod running but never `Ready` | It waits until the installed OpenEverest supports this build: the Warning Event in `kubectl describe provider provider-cassandra` says why |
 | `K8ssandraCluster` created but not reconciled | Confirm the operator is running and cluster-scoped, and that cert-manager is installed |
 | `K8ssandraCluster` created but no pods | Inspect the `K8ssandraCluster` / `CassandraDatacenter` status — the failure is upstream in the operator |
 | Readiness probe `500` right after start | Normal during Cassandra's first boot; wait for the `CassandraDatacenter` to reach `Ready` |
