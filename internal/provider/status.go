@@ -88,6 +88,9 @@ func (p *Provider) Status(c *controller.Context) (controller.Status, error) {
 	}
 
 	status := observeCluster(kc)
+	if msg := tlsRolloutMessage(c, kc); msg != "" {
+		status.Message = cmp.Or(status.Message, msg)
+	}
 	if !cassandraInitialized(kc) {
 		return withDesiredReplicas(c, status), nil
 	}

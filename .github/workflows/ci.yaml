@@ -159,6 +159,16 @@ jobs:
       suite: lifecycle
     secrets: inherit
 
+  test-e2e-cluster-tls:
+    name: E2E cluster / tls
+    needs: [lint, build, verify]
+    uses: ./.github/workflows/e2e-cluster-test.yaml
+    with:
+      openeverest_ref: ${{ github.event_name == 'schedule' && 'main' || inputs.openeverest_ref || '' }}
+      make_target: test-e2e-cluster-tls
+      suite: tls
+    secrets: inherit
+
   test-e2e-cluster-backup:
     name: E2E cluster / backup
     needs: [lint, build, verify]

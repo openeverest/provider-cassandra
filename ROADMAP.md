@@ -88,11 +88,11 @@ Progress: [#27](https://github.com/openeverest/provider-cassandra/issues/27) ·
 
 | Item | Upstream mapping | Notes |
 |---|---|---|
-| Client-to-node TLS | `cassandra.clientEncryptionStores` + `cassandraYaml.client_encryption_options` | Keystore/truststore issued by cert-manager (already required by the chart). Expose the CA in the connection details |
-| Node-to-node TLS | `cassandra.serverEncryptionStores` + `server_encryption_options` | Required before multi-DC |
+| Client-to-node TLS | `cassandra.clientEncryptionStores` + `cassandraYaml.client_encryption_options` | Done: `spec.parameters.tls` (`preferTLS` / `requireTLS`), the shape all providers share. The certificate comes from a Secret, a cert-manager issuer or a CA created for the instance; the provider builds the JKS stores. The CA is in the connection details |
+| Node-to-node TLS | `cassandra.serverEncryptionStores` + `server_encryption_options` | Done: on with TLS, mutual, from the instance's own CA. A running cluster switches in three rolling restarts without downtime |
 | Medusa and Reaper mTLS | `medusa.serviceProperties.encryption`, `reaper.encryption` | Operator `1.30+` |
 | Management API auth | `datacenters[].managementApiAuth` | Management API (port 8080) uses mTLS |
-| Auth toggle stays on | `cassandra.auth` | Keep auth always enabled. Do not expose a switch to turn it off |
+| Auth toggle stays on | `cassandra.auth` | Done: always enabled, with no switch to turn it off |
 
 ## Later: Topologies and scale
 
@@ -134,7 +134,7 @@ A summary of which k8ssandra-operator (`1.32.x`) capabilities the provider cover
 | Multi-cluster (`ClientConfig`) | ✅ | ⏸ needs core |
 | Stopped DC | ✅ | ⏸ needs core |
 | Superuser secret | ✅ | 🗓 0.2 |
-| Client / internode TLS | ✅ | 🗓 0.4 |
+| Client / internode TLS | ✅ | ✅ 0.4 |
 | NodePort / service customization | ✅ | 🗓 0.3 |
 | Medusa backup / schedule / in-place restore (S3) | ✅ | ✅ 0.1 |
 | Medusa GCS / Azure / IBM | ✅ | ⏸ needs core |

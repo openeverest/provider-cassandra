@@ -53,6 +53,84 @@ spec:
     componentTypes:
       cassandra:
         metrics: Native
+  parametersSchema:
+    openAPIV3Schema:
+      description: |-
+        Parameters defines instance-wide structured parameters that apply to the
+        entire cluster (Instance.spec.parameters).
+      properties:
+        tls:
+          description: |-
+            TLS configures encryption in transit: between clients and Cassandra,
+            and between the Cassandra nodes.
+          properties:
+            additionalNames:
+              description: |-
+                AdditionalNames are DNS names the client certificate is valid for
+                besides those of the instance's Services, such as an external name
+                clients connect to. Used with issuer or the provider's CA; cannot be
+                combined with certificateSecretName, whose certificate carries its own
+                names. Changing them reissues the certificate without a restart.
+              items:
+                type: string
+              type: array
+            certificateSecretName:
+              description: |-
+                CertificateSecretName names a Secret in the instance namespace with the
+                certificate the nodes present to clients, followed by any intermediate
+                CA certificates (tls.crt), its private key (tls.key) and the CA
+                certificate it is verified with (ca.crt). It must be valid for the
+                names clients connect to, such as <instance>-<datacenter>-service.
+                Does not need cert-manager. Cannot be combined with issuer or
+                additionalNames.
+              type: string
+            internalCertificateSecretName:
+              description: |-
+                InternalCertificateSecretName names a Secret in the instance namespace,
+                in the same format, with the certificate the nodes authenticate each
+                other with. It must allow both server and client authentication, and
+                its ca.crt should only sign Cassandra nodes: any certificate it signs
+                can join the cluster. Without it, the certificate is signed by a CA the
+                provider creates for the instance, never by issuer.
+              type: string
+            issuer:
+              description: |-
+                Issuer is the cert-manager issuer that signs the client certificate,
+                instead of the CA the provider creates for the instance. The provider
+                requests it as the Certificate <instance>-tls and cert-manager renews
+                it. The issuer must write its CA certificate to ca.crt, as the CA and
+                Vault issuers do.
+              properties:
+                group:
+                  default: cert-manager.io
+                  description: |-
+                    Group is the API group of an external issuer, such as
+                    awspca.cert-manager.io.
+                  type: string
+                kind:
+                  default: Issuer
+                  description: |-
+                    Kind of the issuer: Issuer or ClusterIssuer, or the kind of an
+                    external issuer of group.
+                  type: string
+                name:
+                  description: Name of the issuer.
+                  type: string
+              required:
+                - name
+              type: object
+            mode:
+              default: disabled
+              description: |-
+                Mode is disabled, preferTLS or requireTLS. Changing it restarts the
+                pods one at a time. On an existing instance the nodes first switch to
+                encrypted traffic between them in three such rounds, so the cluster
+                stays available, and then turn on TLS for clients; with backups that
+                last round restarts all pods at once and waits for maintenance
+                approval (enable-client-tls).
+              type: string
+          type: object
+      type: object
   release:
     version: 0.2.0
   topologies:

@@ -1,0 +1,16 @@
+apiVersion: core.openeverest.io/v1alpha1
+kind: Instance
+metadata:
+  name: cass-tls
+status:
+  (conditions[?type == 'Ready'] | [0].status): 'True'
+  (components[?name == 'repair'] | [0].readyReplicas): 1
+---
+# Wait for cass-operator to finish its reconcile before the next change (#49).
+apiVersion: cassandra.datastax.com/v1beta1
+kind: CassandraDatacenter
+metadata:
+  name: dc1-a5b8459f
+(status.observedGeneration == metadata.generation): true
+status:
+  cassandraOperatorProgress: Ready

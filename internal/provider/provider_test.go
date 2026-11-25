@@ -20,6 +20,7 @@ import (
 	"strings"
 	"testing"
 
+	cmapi "github.com/cert-manager/cert-manager/pkg/apis/certmanager/v1"
 	k8ssandraapi "github.com/k8ssandra/k8ssandra-operator/apis/k8ssandra/v1alpha1"
 	medusaapi "github.com/k8ssandra/k8ssandra-operator/apis/medusa/v1alpha1"
 	"github.com/stretchr/testify/assert"
@@ -73,6 +74,7 @@ func fakeClientContext(instance *corev1alpha1.Instance, objs ...client.Object) *
 	_ = backupv1alpha1.AddToScheme(scheme)
 	_ = k8ssandraapi.AddToScheme(scheme)
 	_ = medusaapi.AddToScheme(scheme)
+	_ = cmapi.AddToScheme(scheme)
 	fakeClient := fake.NewClientBuilder().WithScheme(scheme).WithObjects(objs...).Build()
 	return controller.NewContext(context.Background(), fakeClient, instance, common.ProviderName)
 }

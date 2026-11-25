@@ -1,0 +1,7 @@
+apiVersion: core.openeverest.io/v1alpha1
+kind: Instance
+metadata:
+  name: cass-tls
+status:
+  (conditions[?type == 'Ready'] | [0].status): 'False'
+  (contains(conditions[?type == 'Ready'] | [0].message, 'Turning on TLS between the Cassandra nodes')): true

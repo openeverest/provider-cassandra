@@ -2,6 +2,10 @@
 # Edit this file to add or remove components.
 # Run `make generate` after making changes.
 
+# Instance-wide parameters (Instance.spec.parameters), a Go type in
+# definition/types.go.
+parametersSchema: Parameters
+
 components:
     backupAgent:
         type: medusa

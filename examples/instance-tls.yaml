@@ -1,0 +1,32 @@
+# Instance with TLS for clients and between the nodes. Requires cert-manager,
+# which the provider chart already needs for the operator.
+#
+# Clients find the CA in the ca.crt key of the tls-instance-conn Secret.
+apiVersion: core.openeverest.io/v1alpha1
+kind: Instance
+metadata:
+  name: tls-instance
+spec:
+  providerRef:
+    name: provider-cassandra
+  version: "5.0"
+  topology:
+    type: singleDatacenter
+  parameters:
+    tls:
+      mode: requireTLS
+      # Sign the client certificate with your own CA instead of one created
+      # for the instance:
+      # issuer:
+      #   name: company-ca
+      #   kind: ClusterIssuer
+      # additionalNames:
+      #   - mydb.example.com
+  components:
+    engine:
+      type: cassandra
+      replicas: 3
+      storage:
+        size: 25Gi
+    repair:
+      type: reaper

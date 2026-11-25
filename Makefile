@@ -191,6 +191,10 @@ test-e2e-cluster-lifecycle: ## Run the instance lifecycle e2e-cluster test.
 test-e2e-cluster-backup: ## Run the backup/restore e2e-cluster test.
 	. ./test/vars.sh && chainsaw test --config ./test/e2e-cluster/.chainsaw.yaml ./test/e2e-cluster/backup
 
+.PHONY: test-e2e-cluster-tls
+test-e2e-cluster-tls: ## Run the TLS e2e-cluster test (requires cert-manager).
+	. ./test/vars.sh && chainsaw test --config ./test/e2e-cluster/.chainsaw.yaml ./test/e2e-cluster/tls
+
 .PHONY: load-image
 load-image: ## Import the provider image (IMG) into the k3d cluster.
 	k3d image import ${IMG} -c ${K3D_CLUSTER_NAME}
