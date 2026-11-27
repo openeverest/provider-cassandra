@@ -36,10 +36,8 @@ func main() {
 	l := ctrl.Log.WithName("setup")
 	ctx := ctrl.SetupSignalHandler()
 
-	p := provider.New()
-
 	if preflightSpec != "" {
-		if err := preflight.Run(ctx, p, preflight.Options{TargetSpecFile: preflightSpec}); err != nil {
+		if err := preflight.Run(ctx, provider.New(), preflight.Options{TargetSpecFile: preflightSpec}); err != nil {
 			if !errors.Is(err, preflight.ErrUpgradeBlocked) {
 				// The controller-runtime logger is not initialized on this
 				// path; stderr is the pod log the hook preserves.
@@ -55,6 +53,19 @@ func main() {
 		}
 		return
 	}
+
+	// The logger is set up by reconciler.New, so errors before it go to stderr.
+	cfg, err := ctrl.GetConfig()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "unable to load kubeconfig:", err)
+		os.Exit(1)
+	}
+	openShift, err := provider.DetectOpenShift(cfg)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "unable to detect the cluster platform:", err)
+		os.Exit(1)
+	}
+	p := provider.New(provider.WithOpenShift(openShift))
 
 	opts := []reconciler.ReconcilerOption{
 		// Serve the health and readiness probes.
@@ -73,6 +84,7 @@ func main() {
 		l.Error(err, "unable to create reconciler")
 		os.Exit(1)
 	}
+	l.Info("detected cluster platform", "openShift", openShift)
 
 	if err := r.Start(ctx); err != nil {
 		l.Error(err, "unable to start reconciler")

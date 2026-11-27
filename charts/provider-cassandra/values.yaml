@@ -40,10 +40,12 @@ podAnnotations: {}
 podLabels: {}
 
 podSecurityContext:
-  # -- Run as non-root
+  # -- Run as non-root. The image sets USER 65532; no runAsUser or fsGroup here, so
+  # OpenShift's restricted-v2 SCC can assign IDs from the namespace range.
   runAsNonRoot: true
-  # -- Security context fsGroup
-  fsGroup: 65534
+  # -- Seccomp profile, required by the restricted Pod Security Standard
+  seccompProfile:
+    type: RuntimeDefault
 
 securityContext:
   # -- Disallow privilege escalation
@@ -56,8 +58,6 @@ securityContext:
   readOnlyRootFilesystem: true
   # -- Run as non-root user
   runAsNonRoot: true
-  # -- Run as user ID
-  runAsUser: 65534
 
 service:
   # -- Service type
@@ -163,6 +163,20 @@ global:
 operator:
   # -- Deploy the bundled operator. Set to false to use an externally managed operator.
   enabled: true
+  # -- Pod security context of the k8ssandra-operator pod. The seccomp profile
+  # is required by the restricted Pod Security Standard.
+  podSecurityContext:
+    seccompProfile:
+      type: RuntimeDefault
+  # -- Security context of the k8ssandra-operator container. The upstream chart
+  # pins UID/GID 65534, which OpenShift's restricted-v2 SCC rejects; the image
+  # sets USER 65532:65532, so the IDs are left to the image or the SCC.
+  securityContext:
+    runAsUser: null
+    runAsGroup: null
+    capabilities:
+      drop:
+        - ALL
   # -- Keep the operator chart's CRD upgrader job off: it cannot find its chart
   # under the `operator` alias and fails every upgrade. The provider's
   # pre-upgrade hook upgrades the operator CRDs instead.
@@ -172,6 +186,12 @@ operator:
     # self-signs its webhook certificates; the parent operator still requires
     # cert-manager for its own webhook certificate.
     disableCertManagerCheck: true
+    # -- The upstream chart pins UID/GID 65534 and drops them only when it
+    # detects OpenShift at install time, which offline renders (GitOps) miss.
+    # The image sets USER 65532:65532, so the IDs are left to the image or the SCC.
+    securityContext:
+      runAsUser: null
+      runAsGroup: null
 
 # -- Additional environment variables to set on the provider container
 extraEnv: []

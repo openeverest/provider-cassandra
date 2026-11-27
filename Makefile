@@ -229,14 +229,19 @@ install-crds: helm-deps ## Install OpenEverest CRDs and the k8ssandra-operator C
 	tar -xzf $(CHART_DIR)/charts/k8ssandra-operator-*.tgz -C $(OPERATOR_CHART_DIR)
 	find $(OPERATOR_CHART_DIR) -path '*/crds/*.yaml' -exec kubectl apply --server-side -f {} \;
 
+.PHONY: provider-namespace-restricted
+provider-namespace-restricted: ## Create provider-system enforcing the restricted Pod Security Standard, so CI catches pods that don't comply.
+	kubectl create namespace provider-system --dry-run=client -o yaml | kubectl apply -f -
+	kubectl label --overwrite namespace provider-system pod-security.kubernetes.io/enforce=restricted
+
 .PHONY: deploy-provider-ci
 deploy-provider-ci: helm-deps ## Deploy the provider via Helm for CI (IMG must already be imported into k3d).
 	# The bundled k8ssandra-operator is disabled in CI: integration tests
 	# simulate the operator by patching CR statuses directly, and disabling the
 	# subchart avoids its cert-manager Certificate/Issuer resources (cert-manager
 	# is not installed in the CI cluster).
+	$(MAKE) provider-namespace-restricted
 	helm upgrade --install provider-cassandra $(CHART_DIR) \
-		--create-namespace \
 		--namespace provider-system \
 		--set operator.enabled=false \
 		--set image.repository=$(_IMG_REPO) \
@@ -246,8 +251,8 @@ deploy-provider-ci: helm-deps ## Deploy the provider via Helm for CI (IMG must a
 
 .PHONY: deploy-provider-e2e
 deploy-provider-e2e: helm-deps ## Deploy the provider with the bundled k8ssandra-operator for e2e-cluster tests (requires cert-manager).
+	$(MAKE) provider-namespace-restricted
 	helm upgrade --install provider-cassandra $(CHART_DIR) \
-		--create-namespace \
 		--namespace provider-system \
 		--set image.repository=$(_IMG_REPO) \
 		--set image.tag=$(_IMG_TAG) \

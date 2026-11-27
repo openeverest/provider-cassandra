@@ -105,6 +105,15 @@ helm install provider-cassandra oci://ghcr.io/openeverest/charts/provider-cassan
   1 CPU, 4Gi and 25Gi each). Change or disable it, or add your own, under `presets` in the
   chart values; `provider.shortName` prefixes their names. Presets pin the provider's default
   [version](#versions) bundle and reference no namespaced objects.
+- The provider and operator pods pin no UID, GID or fsGroup and use the `RuntimeDefault`
+  seccomp profile, so they run under the `restricted` Pod Security Standard and OpenShift's
+  `restricted-v2` SCC. On OpenShift (detected at startup through the `security.openshift.io`
+  API group) the provider also stops the operators from pinning IDs on the Cassandra and
+  Reaper pods, so the SCC assigns them from the namespace range. Elsewhere those pods keep
+  the operators' defaults (Cassandra runs as UID 999, Reaper as 1000). Backups don't work
+  under `restricted-v2` yet: the Medusa image only runs as UID 999
+  ([cassandra-medusa#832](https://github.com/thelastpickle/cassandra-medusa/issues/832)), so
+  an Instance with `backup.enabled` doesn't start there.
 
 > [!IMPORTANT]
 > The operator's admission webhooks require [cert-manager](https://cert-manager.io) to be
