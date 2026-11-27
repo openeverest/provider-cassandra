@@ -39,6 +39,8 @@ Gaps in the current code:
 
 - The `medusa` entry in [definition/versions.yaml](definition/versions.yaml) is not applied. The operator runs its own default Medusa image, so the pinned `0.22.3`
   is out of date (operator `1.32.x` ships Medusa `0.29`–`0.30`).
+- Backups don't work under OpenShift's `restricted-v2` SCC: the Medusa image only runs as
+  UID 999 ([cassandra-medusa#832](https://github.com/thelastpickle/cassandra-medusa/issues/832)).
 - The provider ignores these `Instance` fields: `service`, `userSecretRef`,
   `dataSource` and `maintenance`.
 

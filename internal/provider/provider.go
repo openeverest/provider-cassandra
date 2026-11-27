@@ -94,10 +94,13 @@ type Provider struct {
 
 	// tlsSources maps certificate Secrets to the Instances using them.
 	tlsSources *sourceIndex
+
+	// openShift leaves pod IDs to OpenShift's SCC, see DetectOpenShift.
+	openShift bool
 }
 
 // New creates a new Provider instance.
-func New() *Provider {
+func New(opts ...Option) *Provider {
 	tlsSources := newSourceIndex()
 	p := &Provider{
 		tlsSources: tlsSources,
@@ -136,6 +139,9 @@ func New() *Provider {
 		},
 	}
 	p.SetShippedBackupClasses(backupclasses.Shipped())
+	for _, opt := range opts {
+		opt(p)
+	}
 
 	return p
 }
@@ -168,6 +174,7 @@ func (p *Provider) Sync(c *controller.Context) error {
 		return err
 	}
 	kc.Spec.Reaper = reaper
+	p.applyPlatformSecurity(cassandra, reaper)
 
 	tlsRollout, err := applyTLS(c, kc, p.sources())
 	if err != nil {

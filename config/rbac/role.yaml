@@ -78,6 +78,13 @@ rules:
 - apiGroups:
   - backup.openeverest.io
   resources:
+  - backups/finalizers
+  - restores/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - backup.openeverest.io
+  resources:
   - backups/status
   - restores/status
   verbs:
